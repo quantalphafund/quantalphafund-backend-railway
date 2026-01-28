@@ -48,6 +48,9 @@ from core.ml_training import (
 # Import TensorFlow models if available
 if TF_AVAILABLE:
     from core.ml_training import train_tf_models, backtest_tf_models
+    print("TensorFlow models loaded successfully")
+else:
+    print("WARNING: TensorFlow not available - TF endpoints will be disabled")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1952,10 +1955,26 @@ def interpret_backtest_accuracy(accuracy_score: float, direction_correct: bool) 
 @app.get("/api/tf/status")
 async def get_tensorflow_status():
     """Check if TensorFlow is available"""
-    return {
-        'tensorflow_available': TF_AVAILABLE,
-        'message': 'TensorFlow models ready' if TF_AVAILABLE else 'TensorFlow not installed'
-    }
+    import sys
+
+    # Check what's actually happening with TensorFlow
+    tf_info = {'tensorflow_available': TF_AVAILABLE}
+
+    try:
+        import tensorflow as tf
+        tf_info['tensorflow_version'] = tf.__version__
+        tf_info['tensorflow_import'] = 'success'
+    except ImportError as e:
+        tf_info['tensorflow_import'] = 'failed'
+        tf_info['import_error'] = str(e)
+    except Exception as e:
+        tf_info['tensorflow_import'] = 'error'
+        tf_info['error'] = str(e)
+
+    tf_info['message'] = 'TensorFlow models ready' if TF_AVAILABLE else 'TensorFlow not available'
+    tf_info['python_version'] = sys.version
+
+    return tf_info
 
 
 @app.get("/api/tf/train/{symbol}")
