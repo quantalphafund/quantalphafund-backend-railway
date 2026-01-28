@@ -15,6 +15,7 @@ import asyncio
 import logging
 import sys
 import os
+import numpy as np
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,6 +35,13 @@ from core.predictions.ml_predictions import (
     calculate_prediction_accuracy,
     get_all_model_predictions,
     PREDICTIONS_01_01_2026,
+)
+from core.ml_training import (
+    train_and_predict,
+    backtest_2025,
+    train_all_models,
+    get_trained_predictions,
+    HISTORICAL_DATA,
 )
 
 # Configure logging
@@ -1759,6 +1767,177 @@ async def get_all_available_predictions():
         'totalSymbols': len(result),
         'predictions': sorted(result, key=lambda x: x['prediction12M'], reverse=True)
     }
+
+
+# ============================================
+# TRAINED ML MODELS API - Real trained models
+# ============================================
+
+@app.get("/api/ml/train/{symbol}")
+async def train_model_for_symbol(symbol: str):
+    """
+    Train ML models on 10 years of historical data for a symbol.
+    Returns predictions and 2025 backtest results.
+    """
+    symbol = symbol.upper()
+
+    if symbol not in HISTORICAL_DATA:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No historical data available for {symbol}. Available: {list(HISTORICAL_DATA.keys())}"
+        )
+
+    try:
+        result = get_trained_predictions(symbol)
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to train model")
+
+        return {
+            'symbol': symbol,
+            'status': 'trained',
+            'trainingPeriod': '2015-2024 (10 years)',
+            'backtestPeriod': '2025 (full year)',
+            **result
+        }
+    except Exception as e:
+        logger.error(f"Training error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ml/backtest/{symbol}")
+async def backtest_symbol(symbol: str):
+    """
+    Backtest ML predictions against actual 2025 performance.
+    Shows predicted vs actual returns with accuracy metrics.
+    """
+    symbol = symbol.upper()
+
+    if symbol not in HISTORICAL_DATA:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No historical data available for {symbol}"
+        )
+
+    try:
+        result = backtest_2025(symbol)
+        if not result:
+            raise HTTPException(status_code=500, detail="Backtest failed")
+
+        return {
+            'symbol': symbol,
+            'model': result.model_name,
+            'backtestPeriod': 'Jan 2025 - Dec 2025',
+            'trainingData': '2015-2024 (10 years)',
+            'predicted': {
+                'annual': result.predicted_annual,
+                'monthly': result.monthly_predictions,
+            },
+            'actual': {
+                'annual': result.actual_annual,
+                'monthly': result.monthly_actuals,
+            },
+            'accuracy': {
+                'predictionError': result.prediction_error,
+                'directionCorrect': result.direction_correct,
+                'accuracyScore': result.accuracy_score,
+            },
+            'interpretation': interpret_backtest_accuracy(result.accuracy_score, result.direction_correct),
+        }
+    except Exception as e:
+        logger.error(f"Backtest error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ml/train-all")
+async def train_all_available_models():
+    """
+    Train models for all available symbols with historical data.
+    Returns summary of all trained models with backtest results.
+    """
+    try:
+        results = train_all_models()
+
+        summary = []
+        for symbol, data in results.items():
+            backtest = data.get('backtest')
+            if backtest:
+                summary.append({
+                    'symbol': symbol,
+                    'predictedAnnual': backtest.get('predicted_annual'),
+                    'actualAnnual': backtest.get('actual_annual'),
+                    'predictionError': backtest.get('prediction_error'),
+                    'directionCorrect': backtest.get('direction_correct'),
+                    'accuracyScore': backtest.get('accuracy_score'),
+                })
+
+        # Calculate overall accuracy
+        if summary:
+            avg_accuracy = np.mean([s['accuracyScore'] for s in summary])
+            direction_accuracy = sum(1 for s in summary if s['directionCorrect']) / len(summary) * 100
+            avg_error = np.mean([s['predictionError'] for s in summary])
+        else:
+            avg_accuracy = 0
+            direction_accuracy = 0
+            avg_error = 0
+
+        return {
+            'status': 'completed',
+            'symbolsTrained': len(results),
+            'trainingPeriod': '2015-2024',
+            'backtestPeriod': '2025',
+            'overallMetrics': {
+                'averageAccuracyScore': round(avg_accuracy, 1),
+                'directionAccuracy': round(direction_accuracy, 1),
+                'averagePredictionError': round(avg_error, 2),
+            },
+            'results': sorted(summary, key=lambda x: x['accuracyScore'], reverse=True),
+        }
+    except Exception as e:
+        logger.error(f"Train all error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ml/available-symbols")
+async def get_available_training_symbols():
+    """
+    Get list of symbols with historical data available for ML training.
+    """
+    symbols_info = []
+
+    for symbol in HISTORICAL_DATA.keys():
+        data = HISTORICAL_DATA[symbol]
+        years = sorted(data.keys())
+        total_months = sum(len(data[y]) for y in years)
+
+        symbols_info.append({
+            'symbol': symbol,
+            'yearsAvailable': years,
+            'dataPoints': total_months,
+            'startYear': min(years),
+            'endYear': max(years),
+        })
+
+    return {
+        'totalSymbols': len(symbols_info),
+        'dataRange': '2015-2025',
+        'symbols': symbols_info,
+    }
+
+
+def interpret_backtest_accuracy(accuracy_score: float, direction_correct: bool) -> str:
+    """Interpret backtest accuracy score"""
+    if accuracy_score >= 85:
+        quality = "Excellent"
+    elif accuracy_score >= 70:
+        quality = "Good"
+    elif accuracy_score >= 55:
+        quality = "Moderate"
+    else:
+        quality = "Poor"
+
+    direction_text = "correctly predicted direction" if direction_correct else "missed direction"
+
+    return f"{quality} prediction accuracy ({accuracy_score:.1f}%), {direction_text}"
 
 
 # Startup event
