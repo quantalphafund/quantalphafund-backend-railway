@@ -14,10 +14,10 @@ scipy==1.11.4
 aiohttp==3.9.1
 httpx==0.26.0
 
-# Machine Learning
+# Machine Learning (lightweight for Railway deployment)
 scikit-learn==1.3.2
-tensorflow-cpu==2.15.0
 xgboost==2.0.3
+# Note: TensorFlow removed due to Railway build limits - using sklearn neural networks instead
 
 # Utilities
 python-dotenv==1.0.0

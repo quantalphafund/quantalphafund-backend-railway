@@ -43,14 +43,11 @@ from core.ml_training import (
     get_trained_predictions,
     HISTORICAL_DATA,
     TF_AVAILABLE,
+    train_advanced_models,
+    backtest_advanced_models,
 )
 
-# Import TensorFlow models if available
-if TF_AVAILABLE:
-    from core.ml_training import train_tf_models, backtest_tf_models
-    print("TensorFlow models loaded successfully")
-else:
-    print("WARNING: TensorFlow not available - TF endpoints will be disabled")
+print(f"Advanced ML models loaded (Neural Network + XGBoost + Ensemble)")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1954,41 +1951,43 @@ def interpret_backtest_accuracy(accuracy_score: float, direction_correct: bool) 
 
 @app.get("/api/tf/status")
 async def get_tensorflow_status():
-    """Check if TensorFlow is available"""
+    """Check ML models status"""
     import sys
+    import sklearn
+    import xgboost
 
-    # Check what's actually happening with TensorFlow
-    tf_info = {'tensorflow_available': TF_AVAILABLE}
-
-    try:
-        import tensorflow as tf
-        tf_info['tensorflow_version'] = tf.__version__
-        tf_info['tensorflow_import'] = 'success'
-    except ImportError as e:
-        tf_info['tensorflow_import'] = 'failed'
-        tf_info['import_error'] = str(e)
-    except Exception as e:
-        tf_info['tensorflow_import'] = 'error'
-        tf_info['error'] = str(e)
-
-    tf_info['message'] = 'TensorFlow models ready' if TF_AVAILABLE else 'TensorFlow not available'
-    tf_info['python_version'] = sys.version
-
-    return tf_info
+    return {
+        'ml_available': True,
+        'framework': 'scikit-learn + XGBoost',
+        'sklearn_version': sklearn.__version__,
+        'xgboost_version': xgboost.__version__,
+        'python_version': sys.version.split()[0],
+        'models': [
+            'Neural Network (MLP 64-32-16)',
+            'Deep Neural Network (MLP 128-64-32-16)',
+            'XGBoost Gradient Boosting',
+            'Random Forest',
+            'Gradient Boosting',
+            'Weighted Ensemble'
+        ],
+        'features': [
+            'Returns (1m, 3m, 6m, 12m)',
+            'Volatility (3m, 6m, 12m)',
+            'MA Crossovers',
+            'RSI-like Momentum',
+            'Price Position',
+            'Trend Strength'
+        ],
+        'message': 'Advanced ML models ready'
+    }
 
 
 @app.get("/api/tf/train/{symbol}")
-async def train_tensorflow_models(symbol: str):
+async def train_advanced_ml_models(symbol: str):
     """
-    Train TensorFlow models (LSTM, GRU, Dense, XGBoost) on 10 years of data.
+    Train advanced ML models (Neural Networks, XGBoost, Random Forest, Ensemble) on 10 years of data.
     Returns predictions with validation metrics.
     """
-    if not TF_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="TensorFlow is not available. Install with: pip install tensorflow-cpu"
-        )
-
     symbol = symbol.upper()
 
     if symbol not in HISTORICAL_DATA:
@@ -1998,7 +1997,7 @@ async def train_tensorflow_models(symbol: str):
         )
 
     try:
-        predictions = train_tf_models(symbol)
+        predictions = train_advanced_models(symbol)
 
         if not predictions:
             raise HTTPException(status_code=500, detail="Training failed")
@@ -2006,7 +2005,7 @@ async def train_tensorflow_models(symbol: str):
         return {
             'symbol': symbol,
             'status': 'trained',
-            'framework': 'TensorFlow 2.15',
+            'framework': 'scikit-learn + XGBoost',
             'trainingData': '2015-2024 (10 years, 120 months)',
             'features': [
                 'Returns (1m, 3m, 6m, 12m)',
@@ -2030,22 +2029,16 @@ async def train_tensorflow_models(symbol: str):
             }
         }
     except Exception as e:
-        logger.error(f"TensorFlow training error for {symbol}: {e}")
+        logger.error(f"ML training error for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/tf/backtest/{symbol}")
-async def backtest_tensorflow_models(symbol: str):
+async def backtest_advanced_ml_models(symbol: str):
     """
-    Train TensorFlow models and backtest against actual 2025 performance.
+    Train advanced ML models and backtest against actual 2025 performance.
     Shows predicted vs actual with accuracy metrics.
     """
-    if not TF_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="TensorFlow is not available"
-        )
-
     symbol = symbol.upper()
 
     if symbol not in HISTORICAL_DATA:
@@ -2055,7 +2048,7 @@ async def backtest_tensorflow_models(symbol: str):
         )
 
     try:
-        result = backtest_tf_models(symbol)
+        result = backtest_advanced_models(symbol)
 
         if 'error' in result:
             raise HTTPException(status_code=500, detail=result['error'])
@@ -2072,7 +2065,7 @@ async def backtest_tensorflow_models(symbol: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"TensorFlow backtest error for {symbol}: {e}")
+        logger.error(f"ML backtest error for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -14,21 +14,18 @@ from .model_trainer import (
     BacktestResult,
 )
 
-# TensorFlow models (imported conditionally to handle missing dependencies)
-try:
-    from .tf_models import (
-        train_tf_models,
-        backtest_tf_models,
-        TFModelPrediction,
-        TFEnsembleTrainer,
-    )
-    TF_AVAILABLE = True
-except ImportError as e:
-    TF_AVAILABLE = False
-    train_tf_models = None
-    backtest_tf_models = None
-    TFModelPrediction = None
-    TFEnsembleTrainer = None
+# Advanced ML models (sklearn neural networks + XGBoost + ensemble)
+from .advanced_models import (
+    train_advanced_models,
+    backtest_advanced_models,
+    AdvancedPrediction,
+    AdvancedEnsembleTrainer,
+)
+
+# For backward compatibility
+TF_AVAILABLE = True  # We now use sklearn which is always available
+train_tf_models = train_advanced_models
+backtest_tf_models = backtest_advanced_models
 
 __all__ = [
     'get_historical_prices',
@@ -41,9 +38,11 @@ __all__ = [
     'get_trained_predictions',
     'ModelPrediction',
     'BacktestResult',
+    'train_advanced_models',
+    'backtest_advanced_models',
+    'AdvancedPrediction',
+    'AdvancedEnsembleTrainer',
     'train_tf_models',
     'backtest_tf_models',
-    'TFModelPrediction',
-    'TFEnsembleTrainer',
     'TF_AVAILABLE',
 ]
