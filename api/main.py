@@ -1,6 +1,7 @@
 """
 Medallion Fund Dashboard - Main API
 FastAPI-based REST API for the investment dashboard
+Version: 1.1.0 - Updated commodity prices (Jan 2025)
 """
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
