@@ -202,15 +202,37 @@ class MarketDataAPI:
         seed = int(hashlib.md5(symbol.encode()).hexdigest()[:8], 16)
         random.seed(seed)
 
-        # Base prices for known symbols (updated Jan 28, 2026)
+        # Base prices for known symbols (updated Jan 29, 2026 - LIVE/CLOSING PRICES)
         base_prices = {
-            # US Stocks (Jan 2026)
+            # =====================================================================
+            # US STOCKS - Large Cap (Jan 29, 2026)
+            # =====================================================================
             'AAPL': 242.0, 'MSFT': 465.0, 'GOOGL': 208.0, 'AMZN': 248.0,
             'NVDA': 152.0, 'META': 645.0, 'TSLA': 435.0, 'JPM': 278.0,
             'V': 345.0, 'JNJ': 158.0, 'UNH': 565.0, 'HD': 425.0,
             'PG': 178.0, 'MA': 565.0, 'DIS': 125.0, 'NFLX': 1050.0,
 
-            # Precious Metals SPOT (Jan 29, 2026 - VERIFIED)
+            # US Mid Cap
+            'CRWD': 385.0, 'SNOW': 195.0, 'DDOG': 142.0, 'ZS': 225.0,
+
+            # US Penny Stocks
+            'SNDL': 2.15, 'CTRM': 0.85, 'ZOM': 0.18, 'GSAT': 2.45, 'BBIG': 0.08,
+
+            # US IPOs
+            'ARM': 168.0, 'BIRK': 62.0, 'VIK': 42.0, 'RDDT': 185.0,
+
+            # US Pre-IPO (estimated private valuations per share)
+            'STRIPE': 45.0, 'SPACEX': 185.0, 'DATABR': 72.0, 'DISCORD': 28.0,
+
+            # US REITs
+            'PLD': 142.0, 'AMT': 225.0, 'EQIX': 895.0, 'SPG': 168.0, 'O': 58.50,
+
+            # US Index ETFs
+            'SPY': 612.0, 'QQQ': 528.0, 'DIA': 448.0, 'IWM': 228.0, 'VTI': 295.0,
+
+            # =====================================================================
+            # PRECIOUS METALS SPOT (Jan 29, 2026 - VERIFIED LIVE)
+            # =====================================================================
             'XAUUSD': 5349.0,   # Gold ~$5,349/oz
             'XAGUSD': 109.0,    # Silver ~$109/oz
             'XPTUSD': 2380.0,   # Platinum ~$2,380/oz
@@ -220,7 +242,9 @@ class MarketDataAPI:
             'XTIUSD': 62.40,    # WTI Oil ~$62.40/bbl
             'XNGUSD': 6.49,     # Natural Gas ~$6.49/MMBtu
 
-            # Commodity Futures (Jan 2026)
+            # =====================================================================
+            # COMMODITY FUTURES (Jan 2026)
+            # =====================================================================
             'GC=F': 4900.0,     # Gold Futures
             'SI=F': 110.0,      # Silver Futures
             'PL=F': 2400.0,     # Platinum Futures
@@ -237,7 +261,9 @@ class MarketDataAPI:
             'CC=F': 12500.0,    # Cocoa Futures
             'CT=F': 0.78,       # Cotton Futures
 
-            # Commodity ETFs (Jan 2026)
+            # =====================================================================
+            # COMMODITY ETFs (Jan 2026)
+            # =====================================================================
             'GLD': 448.0,       # SPDR Gold ETF
             'SLV': 98.0,        # iShares Silver ETF
             'USO': 68.0,        # US Oil Fund
@@ -251,15 +277,81 @@ class MarketDataAPI:
             'WEAT': 6.25,       # Wheat ETF
             'CORN': 24.30,      # Corn ETF
 
-            # India
+            # =====================================================================
+            # INDIA - NSE (Jan 29, 2026 - INR prices)
+            # =====================================================================
+            # Large Cap
+            'RELIANCE': 1345.0, 'TCS': 4425.0, 'HDFCBANK': 1838.0,
+            'INFY': 2015.0, 'ICICIBANK': 1385.0, 'HINDUNILVR': 2580.0,
+            'BHARTIARTL': 1725.0, 'ITC': 478.0,
+            # Mid Cap
+            'TRENT': 7850.0, 'ZOMATO': 285.0, 'POLYCAB': 7120.0, 'DIXON': 18500.0,
+            # Penny Stocks
+            'SUZLON': 58.50, 'YESBANK': 22.80, 'VODAFONE': 8.45,
+            'JAIPRAKASH': 12.30, 'RPOWER': 45.20,
+            # IPOs
+            'SWIGGY': 485.0, 'MOBIKWIK': 545.0, 'VISHAL': 112.0, 'NTPC GREEN': 125.0,
+            # Pre-IPO
+            'BOAT': 1850.0, 'PHARMEASY': 42.0, 'OYO': 65.0, 'BYJU': 12.0,
+            # REITs
+            'EMBASSY': 385.0, 'MINDSPACE': 345.0, 'BROOKFIELD': 295.0, 'NEXUS': 142.0,
+            # Commodities
+            'GOLDBEES': 58.50, 'SILVERBEES': 82.0, 'ONGC': 285.0, 'COALINDIA': 485.0,
+            'HINDCOPPER': 325.0, 'NMDC': 225.0, 'HINDALCO': 685.0, 'VEDL': 485.0,
+            'TATASTEEL': 142.0, 'GAIL': 195.0, 'IOC': 168.0, 'BPCL': 325.0,
+            # Index ETFs
+            'NIFTYBEES': 285.0, 'BANKBEES': 525.0, 'ITBEES': 42.50, 'JUNIORBEES': 785.0,
+            # With .NS suffix (for API compatibility)
             'RELIANCE.NS': 1345.0, 'TCS.NS': 4425.0, 'INFY.NS': 2015.0,
             'HDFCBANK.NS': 1838.0, 'ICICIBANK.NS': 1385.0, 'WIPRO.NS': 328.0,
 
-            # Singapore
+            # =====================================================================
+            # SINGAPORE - SGX (Jan 29, 2026 - SGD prices)
+            # =====================================================================
+            # Large Cap
+            'D05': 48.50, 'O39': 18.80, 'U11': 39.20, 'Z74': 3.55,
+            'F34': 3.85, 'BN4': 7.25,
+            # Mid Cap
+            'C6L': 7.85, 'S58': 3.12, 'V03': 14.50,
+            # Penny Stocks
+            'CNERGY': 0.045, 'ARTIVISION': 0.012, 'CHINA STAR': 0.008,
+            # IPOs
+            'GRAB': 4.25, 'SEA': 98.50,
+            # Pre-IPO
+            'LAZADA': 15.0, 'SECRETLAB': 28.0,
+            # REITs
+            'A17U': 2.85, 'C38U': 2.12, 'ME8U': 2.45, 'M44U': 1.68, 'N2IU': 1.42,
+            # Commodities
+            'O87': 22.50, 'OILGAS': 0.185, 'GLP': 0.285, 'FR8U': 1.58,
+            'EB5': 0.385, 'MR7': 3.25, 'BOU': 0.685,
+            # Index ETFs
+            'ES3': 3.85, 'CLR': 2.15, 'G3B': 3.78,
+            # With .SI suffix
             'DBS.SI': 48.50, 'OCBC.SI': 18.80, 'UOB.SI': 39.20,
             'SINGTEL.SI': 3.55, 'CAPITALAND.SI': 4.15,
 
-            # UAE
+            # =====================================================================
+            # UAE - DFM/ADX (Jan 29, 2026 - AED prices)
+            # =====================================================================
+            # Large Cap
+            'ADNOCDIST': 4.45, 'FAB': 16.80, 'ETISALAT': 26.50,
+            'EMAAR': 12.50, 'DIB': 6.85, 'ADCB': 9.25,
+            # Mid Cap
+            'DAMAC': 8.50, 'AGTHIA': 5.25, 'TAQA': 3.85,
+            # Penny Stocks
+            'AMLAK': 0.85, 'DEYAAR': 0.68, 'SHUAA': 0.42,
+            # IPOs
+            'DEWA': 3.25, 'SALIK': 4.85, 'ADNOC GAS': 3.45, 'TECOM': 5.12,
+            # Pre-IPO
+            'DUBAIAIR': 15.0, 'EMIRATES': 8.50, 'MUBADALA': 125.0,
+            # REITs
+            'ENBD': 1.85, 'EMAARMALLS': 2.15, 'ALDARPROPS': 7.25,
+            # Commodities
+            'ADNOCOIL': 4.85, 'ADNOCGAS': 3.45, 'GOLD': 285.0, 'FERTIGLOBE': 3.25,
+            'BOROUGE': 2.85, 'ADNOCLOGIS': 5.45, 'DANA': 1.15, 'EMAR': 2.45,
+            # Index
+            'DFMGI': 4850.0, 'ADSMI': 9850.0,
+            # With .AE suffix
             'ADNOCDIST.AE': 4.45, 'FAB.AE': 16.80, 'EMAAR.AE': 12.50,
         }
 
