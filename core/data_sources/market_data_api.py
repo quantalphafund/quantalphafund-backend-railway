@@ -210,8 +210,8 @@ class MarketDataAPI:
             'V': 345.0, 'JNJ': 158.0, 'UNH': 565.0, 'HD': 425.0,
             'PG': 178.0, 'MA': 565.0, 'DIS': 125.0, 'NFLX': 1050.0,
 
-            # Precious Metals SPOT (Jan 28, 2026 - VERIFIED)
-            'XAUUSD': 4850.0,   # Gold ~$4,850/oz
+            # Precious Metals SPOT (Jan 29, 2026 - VERIFIED)
+            'XAUUSD': 5349.0,   # Gold ~$5,349/oz
             'XAGUSD': 109.0,    # Silver ~$109/oz
             'XPTUSD': 2380.0,   # Platinum ~$2,380/oz
             'XPDUSD': 1780.0,   # Palladium ~$1,780/oz
