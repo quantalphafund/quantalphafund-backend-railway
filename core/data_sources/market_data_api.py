@@ -162,15 +162,65 @@ class MarketDataAPI:
         seed = int(hashlib.md5(symbol.encode()).hexdigest()[:8], 16)
         random.seed(seed)
 
-        # Base prices for known symbols
+        # Base prices for known symbols (updated Jan 2025)
         base_prices = {
-            'AAPL': 185.0, 'MSFT': 378.0, 'GOOGL': 141.0, 'AMZN': 155.0,
-            'NVDA': 495.0, 'META': 358.0, 'TSLA': 248.0, 'JPM': 172.0,
-            'V': 262.0, 'JNJ': 156.0, 'UNH': 528.0, 'HD': 345.0,
-            'PG': 148.0, 'MA': 425.0, 'DIS': 92.0, 'NFLX': 485.0,
-            'RELIANCE.NS': 2456.0, 'TCS.NS': 3890.0, 'INFY.NS': 1580.0,
-            'DBS.SI': 35.4, 'OCBC.SI': 13.8, 'UOB.SI': 30.2,
-            'ADNOC.AE': 4.15, 'FAB.AE': 12.5, 'EMAAR.AE': 8.2,
+            # US Stocks
+            'AAPL': 248.0, 'MSFT': 442.0, 'GOOGL': 198.0, 'AMZN': 232.0,
+            'NVDA': 142.0, 'META': 618.0, 'TSLA': 412.0, 'JPM': 265.0,
+            'V': 325.0, 'JNJ': 145.0, 'UNH': 528.0, 'HD': 405.0,
+            'PG': 168.0, 'MA': 535.0, 'DIS': 112.0, 'NFLX': 958.0,
+
+            # Spot Commodities (realistic prices as of Jan 2025)
+            'XAUUSD': 2755.0,   # Gold ~$2,755/oz
+            'XAGUSD': 30.80,    # Silver ~$30.80/oz
+            'XPTUSD': 988.0,    # Platinum ~$988/oz
+            'XPDUSD': 952.0,    # Palladium ~$952/oz
+            'XCUUSD': 4.18,     # Copper ~$4.18/lb
+            'XBRUSD': 76.50,    # Brent Oil ~$76.50/bbl
+            'XTIUSD': 73.20,    # WTI Oil ~$73.20/bbl
+            'XNGUSD': 3.45,     # Natural Gas ~$3.45/MMBtu
+
+            # Commodity Futures
+            'GC=F': 2755.0,     # Gold Futures
+            'SI=F': 30.80,      # Silver Futures
+            'PL=F': 988.0,      # Platinum Futures
+            'PA=F': 952.0,      # Palladium Futures
+            'HG=F': 4.18,       # Copper Futures
+            'CL=F': 73.20,      # WTI Crude Futures
+            'BZ=F': 76.50,      # Brent Crude Futures
+            'NG=F': 3.45,       # Natural Gas Futures
+            'ZW=F': 5.42,       # Wheat Futures ~$5.42/bu
+            'ZC=F': 4.52,       # Corn Futures ~$4.52/bu
+            'ZS=F': 9.95,       # Soybean Futures ~$9.95/bu
+            'KC=F': 3.28,       # Coffee Futures ~$3.28/lb
+            'SB=F': 0.195,      # Sugar Futures ~$0.195/lb
+            'CC=F': 11250.0,    # Cocoa Futures ~$11,250/ton
+            'CT=F': 0.68,       # Cotton Futures ~$0.68/lb
+
+            # Commodity ETFs
+            'GLD': 256.0,       # SPDR Gold ETF
+            'SLV': 28.50,       # iShares Silver ETF
+            'USO': 78.0,        # US Oil Fund
+            'UNG': 14.20,       # US Natural Gas
+            'URA': 29.50,       # Uranium ETF
+            'LIT': 42.80,       # Lithium ETF
+            'PPLT': 92.0,       # Platinum ETF
+            'PALL': 88.0,       # Palladium ETF
+            'CPER': 26.50,      # Copper ETF
+            'DBA': 25.80,       # Agriculture ETF
+            'WEAT': 5.45,       # Wheat ETF
+            'CORN': 22.30,      # Corn ETF
+
+            # India
+            'RELIANCE.NS': 1245.0, 'TCS.NS': 4125.0, 'INFY.NS': 1915.0,
+            'HDFCBANK.NS': 1738.0, 'ICICIBANK.NS': 1285.0, 'WIPRO.NS': 298.0,
+
+            # Singapore
+            'DBS.SI': 43.50, 'OCBC.SI': 16.80, 'UOB.SI': 36.20,
+            'SINGTEL.SI': 3.25, 'CAPITALAND.SI': 3.85,
+
+            # UAE
+            'ADNOCDIST.AE': 4.15, 'FAB.AE': 14.80, 'EMAAR.AE': 11.20,
         }
 
         base_price = base_prices.get(symbol, random.uniform(50, 500))
