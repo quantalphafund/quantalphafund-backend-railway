@@ -74,11 +74,16 @@ class MarketDataAPI:
         if self.finnhub_key:
             quote = await self._get_finnhub_quote(symbol)
 
+        # Validate the quote - if price seems wrong, discard it
+        if quote and not self._is_price_reasonable(symbol, quote.price):
+            logger.warning(f"Unreasonable price {quote.price} for {symbol}, using fallback")
+            quote = None
+
         # Fallback to Alpha Vantage
         if not quote and self.alpha_vantage_key:
             quote = await self._get_alpha_vantage_quote(symbol)
 
-        # Fallback to simulated data
+        # Fallback to simulated data with verified prices
         if not quote:
             quote = self._get_simulated_quote(symbol)
 
@@ -87,6 +92,27 @@ class MarketDataAPI:
             self._quote_cache[symbol] = (quote, datetime.now())
 
         return quote
+
+    def _is_price_reasonable(self, symbol: str, price: float) -> bool:
+        """Check if the returned price is reasonable for known stocks"""
+        # Minimum expected prices for known stocks (to catch API errors)
+        min_prices = {
+            # Indian stocks should be > 10 INR typically
+            'TCS': 3000, 'INFY': 1000, 'RELIANCE': 1000, 'HDFCBANK': 1000,
+            'ICICIBANK': 500, 'HINDUNILVR': 1500, 'BHARTIARTL': 500, 'ITC': 200,
+            'TRENT': 3000, 'ZOMATO': 100, 'POLYCAB': 3000, 'DIXON': 5000,
+            'COALINDIA': 200, 'ONGC': 100, 'TATASTEEL': 80, 'HINDALCO': 300,
+            # Singapore stocks
+            'D05': 20, 'O39': 10, 'U11': 20,
+            # US large caps
+            'AAPL': 100, 'MSFT': 200, 'GOOGL': 100, 'AMZN': 100, 'NVDA': 50,
+        }
+
+        if symbol in min_prices:
+            return price >= min_prices[symbol]
+
+        # For unknown symbols, any positive price is acceptable
+        return price > 0
 
     async def get_multiple_quotes(self, symbols: List[str]) -> Dict[str, StockQuote]:
         """Get quotes for multiple symbols"""
