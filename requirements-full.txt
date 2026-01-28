@@ -1,0 +1,59 @@
+# Medallion Fund Dashboard - Python Dependencies
+
+# Web Framework
+fastapi==0.108.0
+uvicorn[standard]==0.25.0
+pydantic==2.5.3
+
+# Data Processing
+numpy==1.26.2
+pandas==2.1.4
+scipy==1.11.4
+
+# HTTP Client
+aiohttp==3.9.1
+httpx==0.26.0
+
+# Machine Learning
+scikit-learn==1.3.2
+xgboost==2.0.3
+lightgbm==4.2.0
+
+# Deep Learning (optional - for advanced models)
+# torch==2.1.2
+# tensorflow==2.15.0
+
+# Technical Analysis
+ta-lib==0.4.28  # Requires TA-Lib C library
+pandas-ta==0.3.14b0
+
+# Database
+sqlalchemy==2.0.23
+asyncpg==0.29.0
+redis==5.0.1
+
+# Caching
+cachetools==5.3.2
+
+# Utilities
+python-dotenv==1.0.0
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.23.2
+pytest-cov==4.1.0
+
+# Linting
+black==23.12.1
+flake8==6.1.0
+mypy==1.8.0
+
+# Documentation
+mkdocs==1.5.3
+
+# Financial Data APIs (optional premium sources)
+# polygon-api-client==1.12.3
+# alpha-vantage==2.3.1
+# finnhub-python==2.4.19
