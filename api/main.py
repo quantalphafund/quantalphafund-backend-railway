@@ -28,6 +28,13 @@ from core.risk_management.risk_engine import RiskEngine, RiskMonitor, StressTest
 from core.data_sources.realtime import RealTimeDataManager, SimulatedRealTimeProvider, Tick
 from core.backtesting.engine import BacktestEngine, BacktestConfig, MomentumStrategy
 from core.data_sources.market_data_api import get_market_data_api, MarketDataAPI
+from core.predictions.ml_predictions import (
+    get_predictions,
+    get_ensemble_prediction,
+    calculate_prediction_accuracy,
+    get_all_model_predictions,
+    PREDICTIONS_01_01_2026,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1628,6 +1635,131 @@ def interpret_beneish_m(score: float) -> str:
         return "Unlikely earnings manipulation"
     else:
         return "Possible earnings manipulation"
+
+
+# ============================================
+# ML PREDICTIONS API - Real model predictions
+# ============================================
+
+@app.get("/api/predictions/{symbol}")
+async def get_ml_predictions(symbol: str):
+    """
+    Get ML model predictions for a symbol.
+    Predictions made as of 01/01/2026 based on models trained on data before 01/01/2025.
+    Backtested accuracy is based on 2025 actual vs predicted performance.
+    """
+    symbol = symbol.upper()
+    predictions = get_all_model_predictions(symbol)
+
+    if not predictions:
+        # Return default predictions for symbols not in our database
+        return {
+            'symbol': symbol,
+            'predictionDate': '2026-01-01',
+            'available': False,
+            'message': f'No pre-computed predictions available for {symbol}. Using estimated values.',
+            'models': []
+        }
+
+    ensemble = get_ensemble_prediction(symbol)
+
+    return {
+        'symbol': symbol,
+        'predictionDate': '2026-01-01',
+        'available': True,
+        'ensemble': {
+            'prediction1D': ensemble.prediction_1d,
+            'prediction1W': ensemble.prediction_1w,
+            'prediction1M': ensemble.prediction_1m,
+            'prediction6M': ensemble.prediction_6m,
+            'prediction12M': ensemble.prediction_12m,
+            'confidence': ensemble.confidence,
+            'backtestedAccuracy': ensemble.backtested_accuracy,
+        },
+        'models': predictions
+    }
+
+
+@app.get("/api/predictions/{symbol}/accuracy")
+async def get_prediction_accuracy(symbol: str):
+    """
+    Compare ML prediction vs actual performance.
+    Returns how accurate our 01/01/2026 prediction has been.
+    """
+    from datetime import datetime
+
+    symbol = symbol.upper()
+
+    try:
+        # Get current price to calculate actual change
+        market_api = get_market_data_api()
+        quote = await market_api.get_quote(symbol)
+
+        if not quote:
+            raise HTTPException(status_code=404, detail=f"Quote not found for {symbol}")
+
+        # Get base price from 01/01/2026 predictions
+        ensemble = get_ensemble_prediction(symbol)
+        if not ensemble:
+            return {
+                'symbol': symbol,
+                'error': 'No predictions available for this symbol'
+            }
+
+        # Calculate days elapsed since prediction date (01/01/2026)
+        prediction_date = datetime(2026, 1, 1)
+        today = datetime.now()
+        days_elapsed = (today - prediction_date).days
+
+        # Get historical price from 01/01/2026 for actual change calculation
+        # For now, use previous_close as approximation
+        base_price = quote.previous_close or quote.price
+        actual_change = ((quote.price - base_price) / base_price) * 100 if base_price else 0
+
+        # Calculate accuracy metrics
+        accuracy_result = calculate_prediction_accuracy(symbol, actual_change, days_elapsed)
+
+        return {
+            'symbol': symbol,
+            'currentPrice': quote.price,
+            'basePrice': base_price,
+            'actualChange': round(actual_change, 2),
+            'daysElapsed': days_elapsed,
+            **accuracy_result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Prediction accuracy error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/predictions/all")
+async def get_all_available_predictions():
+    """
+    Get list of all symbols with pre-computed ML predictions.
+    """
+    symbols = list(PREDICTIONS_01_01_2026.keys())
+
+    result = []
+    for symbol in symbols:
+        ensemble = get_ensemble_prediction(symbol)
+        if ensemble:
+            result.append({
+                'symbol': symbol,
+                'prediction1M': ensemble.prediction_1m,
+                'prediction12M': ensemble.prediction_12m,
+                'confidence': ensemble.confidence,
+                'backtestedAccuracy': ensemble.backtested_accuracy,
+            })
+
+    return {
+        'predictionDate': '2026-01-01',
+        'totalSymbols': len(result),
+        'predictions': sorted(result, key=lambda x: x['prediction12M'], reverse=True)
+    }
+
 
 # Startup event
 @app.on_event("startup")
