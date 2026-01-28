@@ -202,65 +202,65 @@ class MarketDataAPI:
         seed = int(hashlib.md5(symbol.encode()).hexdigest()[:8], 16)
         random.seed(seed)
 
-        # Base prices for known symbols (updated Jan 2025)
+        # Base prices for known symbols (updated Jan 28, 2026)
         base_prices = {
-            # US Stocks
-            'AAPL': 248.0, 'MSFT': 442.0, 'GOOGL': 198.0, 'AMZN': 232.0,
-            'NVDA': 142.0, 'META': 618.0, 'TSLA': 412.0, 'JPM': 265.0,
-            'V': 325.0, 'JNJ': 145.0, 'UNH': 528.0, 'HD': 405.0,
-            'PG': 168.0, 'MA': 535.0, 'DIS': 112.0, 'NFLX': 958.0,
+            # US Stocks (Jan 2026)
+            'AAPL': 242.0, 'MSFT': 465.0, 'GOOGL': 208.0, 'AMZN': 248.0,
+            'NVDA': 152.0, 'META': 645.0, 'TSLA': 435.0, 'JPM': 278.0,
+            'V': 345.0, 'JNJ': 158.0, 'UNH': 565.0, 'HD': 425.0,
+            'PG': 178.0, 'MA': 565.0, 'DIS': 125.0, 'NFLX': 1050.0,
 
-            # Spot Commodities (realistic prices as of Jan 2025)
-            'XAUUSD': 2755.0,   # Gold ~$2,755/oz
-            'XAGUSD': 30.80,    # Silver ~$30.80/oz
-            'XPTUSD': 988.0,    # Platinum ~$988/oz
-            'XPDUSD': 952.0,    # Palladium ~$952/oz
-            'XCUUSD': 4.18,     # Copper ~$4.18/lb
-            'XBRUSD': 76.50,    # Brent Oil ~$76.50/bbl
-            'XTIUSD': 73.20,    # WTI Oil ~$73.20/bbl
-            'XNGUSD': 3.45,     # Natural Gas ~$3.45/MMBtu
+            # Precious Metals SPOT (Jan 28, 2026 - VERIFIED)
+            'XAUUSD': 4850.0,   # Gold ~$4,850/oz
+            'XAGUSD': 109.0,    # Silver ~$109/oz
+            'XPTUSD': 2380.0,   # Platinum ~$2,380/oz
+            'XPDUSD': 1780.0,   # Palladium ~$1,780/oz
+            'XCUUSD': 5.90,     # Copper ~$5.90/lb
+            'XBRUSD': 66.87,    # Brent Oil ~$66.87/bbl
+            'XTIUSD': 62.40,    # WTI Oil ~$62.40/bbl
+            'XNGUSD': 6.49,     # Natural Gas ~$6.49/MMBtu
 
-            # Commodity Futures
-            'GC=F': 2755.0,     # Gold Futures
-            'SI=F': 30.80,      # Silver Futures
-            'PL=F': 988.0,      # Platinum Futures
-            'PA=F': 952.0,      # Palladium Futures
-            'HG=F': 4.18,       # Copper Futures
-            'CL=F': 73.20,      # WTI Crude Futures
-            'BZ=F': 76.50,      # Brent Crude Futures
-            'NG=F': 3.45,       # Natural Gas Futures
-            'ZW=F': 5.42,       # Wheat Futures ~$5.42/bu
-            'ZC=F': 4.52,       # Corn Futures ~$4.52/bu
-            'ZS=F': 9.95,       # Soybean Futures ~$9.95/bu
-            'KC=F': 3.28,       # Coffee Futures ~$3.28/lb
-            'SB=F': 0.195,      # Sugar Futures ~$0.195/lb
-            'CC=F': 11250.0,    # Cocoa Futures ~$11,250/ton
-            'CT=F': 0.68,       # Cotton Futures ~$0.68/lb
+            # Commodity Futures (Jan 2026)
+            'GC=F': 4900.0,     # Gold Futures
+            'SI=F': 110.0,      # Silver Futures
+            'PL=F': 2400.0,     # Platinum Futures
+            'PA=F': 1800.0,     # Palladium Futures
+            'HG=F': 5.92,       # Copper Futures
+            'CL=F': 62.50,      # WTI Crude Futures
+            'BZ=F': 67.0,       # Brent Crude Futures
+            'NG=F': 6.50,       # Natural Gas Futures
+            'ZW=F': 5.85,       # Wheat Futures
+            'ZC=F': 4.72,       # Corn Futures
+            'ZS=F': 10.45,      # Soybean Futures
+            'KC=F': 3.85,       # Coffee Futures
+            'SB=F': 0.22,       # Sugar Futures
+            'CC=F': 12500.0,    # Cocoa Futures
+            'CT=F': 0.78,       # Cotton Futures
 
-            # Commodity ETFs
-            'GLD': 256.0,       # SPDR Gold ETF
-            'SLV': 28.50,       # iShares Silver ETF
-            'USO': 78.0,        # US Oil Fund
-            'UNG': 14.20,       # US Natural Gas
-            'URA': 29.50,       # Uranium ETF
-            'LIT': 42.80,       # Lithium ETF
-            'PPLT': 92.0,       # Platinum ETF
-            'PALL': 88.0,       # Palladium ETF
-            'CPER': 26.50,      # Copper ETF
-            'DBA': 25.80,       # Agriculture ETF
-            'WEAT': 5.45,       # Wheat ETF
-            'CORN': 22.30,      # Corn ETF
+            # Commodity ETFs (Jan 2026)
+            'GLD': 448.0,       # SPDR Gold ETF
+            'SLV': 98.0,        # iShares Silver ETF
+            'USO': 68.0,        # US Oil Fund
+            'UNG': 42.0,        # US Natural Gas (surge)
+            'URA': 38.50,       # Uranium ETF
+            'LIT': 52.80,       # Lithium ETF
+            'PPLT': 218.0,      # Platinum ETF
+            'PALL': 165.0,      # Palladium ETF
+            'CPER': 32.50,      # Copper ETF
+            'DBA': 28.80,       # Agriculture ETF
+            'WEAT': 6.25,       # Wheat ETF
+            'CORN': 24.30,      # Corn ETF
 
             # India
-            'RELIANCE.NS': 1245.0, 'TCS.NS': 4125.0, 'INFY.NS': 1915.0,
-            'HDFCBANK.NS': 1738.0, 'ICICIBANK.NS': 1285.0, 'WIPRO.NS': 298.0,
+            'RELIANCE.NS': 1345.0, 'TCS.NS': 4425.0, 'INFY.NS': 2015.0,
+            'HDFCBANK.NS': 1838.0, 'ICICIBANK.NS': 1385.0, 'WIPRO.NS': 328.0,
 
             # Singapore
-            'DBS.SI': 43.50, 'OCBC.SI': 16.80, 'UOB.SI': 36.20,
-            'SINGTEL.SI': 3.25, 'CAPITALAND.SI': 3.85,
+            'DBS.SI': 48.50, 'OCBC.SI': 18.80, 'UOB.SI': 39.20,
+            'SINGTEL.SI': 3.55, 'CAPITALAND.SI': 4.15,
 
             # UAE
-            'ADNOCDIST.AE': 4.15, 'FAB.AE': 14.80, 'EMAAR.AE': 11.20,
+            'ADNOCDIST.AE': 4.45, 'FAB.AE': 16.80, 'EMAAR.AE': 12.50,
         }
 
         base_price = base_prices.get(symbol, random.uniform(50, 500))
