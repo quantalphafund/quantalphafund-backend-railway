@@ -109,6 +109,33 @@ class MarketDataAPI:
                 'XNGUSD': 'OANDA:NATGAS_USD',  # Natural Gas
             }
 
+            # Indian stocks - NSE (add .NS suffix for Finnhub)
+            india_stocks = {
+                'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'HINDUNILVR',
+                'BHARTIARTL', 'ITC', 'TRENT', 'ZOMATO', 'POLYCAB', 'DIXON',
+                'SUZLON', 'YESBANK', 'VODAFONE', 'JAIPRAKASH', 'RPOWER',
+                'SWIGGY', 'MOBIKWIK', 'VISHAL', 'BOAT', 'PHARMEASY', 'OYO', 'BYJU',
+                'EMBASSY', 'MINDSPACE', 'BROOKFIELD', 'NEXUS',
+                'GOLDBEES', 'SILVERBEES', 'ONGC', 'COALINDIA', 'HINDCOPPER',
+                'NMDC', 'HINDALCO', 'VEDL', 'TATASTEEL', 'GAIL', 'IOC', 'BPCL',
+                'NIFTYBEES', 'BANKBEES', 'ITBEES', 'JUNIORBEES',
+            }
+
+            # Singapore stocks - SGX (add .SI suffix for Finnhub)
+            singapore_stocks = {
+                'D05', 'O39', 'U11', 'Z74', 'F34', 'BN4',
+                'C6L', 'S58', 'V03',
+                'A17U', 'C38U', 'ME8U', 'M44U', 'N2IU',
+                'ES3', 'CLR', 'G3B',
+            }
+
+            # Map symbol to correct exchange format
+            finnhub_symbol = symbol
+            if symbol in india_stocks:
+                finnhub_symbol = f"{symbol}.NS"
+            elif symbol in singapore_stocks:
+                finnhub_symbol = f"{symbol}.SI"
+
             if symbol in forex_symbols:
                 # Use forex candle endpoint for commodities
                 finnhub_symbol = forex_symbols[symbol]
@@ -136,15 +163,15 @@ class MarketDataAPI:
                                     timestamp=datetime.now()
                                 )
             else:
-                # Regular stock quote
-                url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={self.finnhub_key}"
+                # Regular stock quote - use mapped symbol for API call
+                url = f"https://finnhub.io/api/v1/quote?symbol={finnhub_symbol}&token={self.finnhub_key}"
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, timeout=10) as response:
                         if response.status == 200:
                             data = await response.json()
                             if data.get('c') and data['c'] > 0:
                                 return StockQuote(
-                                    symbol=symbol,
+                                    symbol=symbol,  # Return original symbol, not mapped
                                     price=data['c'],
                                     change=data['d'] or 0,
                                     change_percent=data['dp'] or 0,
@@ -156,7 +183,7 @@ class MarketDataAPI:
                                     timestamp=datetime.now()
                                 )
         except Exception as e:
-            logger.warning(f"Finnhub error for {symbol}: {e}")
+            logger.warning(f"Finnhub error for {symbol} (mapped: {finnhub_symbol}): {e}")
         return None
 
     async def _get_alpha_vantage_quote(self, symbol: str) -> Optional[StockQuote]:
