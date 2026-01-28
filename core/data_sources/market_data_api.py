@@ -97,24 +97,64 @@ class MarketDataAPI:
     async def _get_finnhub_quote(self, symbol: str) -> Optional[StockQuote]:
         """Fetch quote from Finnhub API"""
         try:
-            url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={self.finnhub_key}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if data.get('c') and data['c'] > 0:
-                            return StockQuote(
-                                symbol=symbol,
-                                price=data['c'],
-                                change=data['d'] or 0,
-                                change_percent=data['dp'] or 0,
-                                volume=0,  # Not provided in basic quote
-                                high=data['h'] or data['c'],
-                                low=data['l'] or data['c'],
-                                open=data['o'] or data['c'],
-                                previous_close=data['pc'] or data['c'],
-                                timestamp=datetime.now()
-                            )
+            # Check if it's a forex/commodity symbol (XAUUSD, XAGUSD, etc.)
+            forex_symbols = {
+                'XAUUSD': 'OANDA:XAU_USD',
+                'XAGUSD': 'OANDA:XAG_USD',
+                'XPTUSD': 'OANDA:XPT_USD',
+                'XPDUSD': 'OANDA:XPD_USD',
+                'XCUUSD': 'OANDA:XCU_USD',
+                'XBRUSD': 'OANDA:BCO_USD',  # Brent Crude
+                'XTIUSD': 'OANDA:WTICO_USD',  # WTI Crude
+                'XNGUSD': 'OANDA:NATGAS_USD',  # Natural Gas
+            }
+
+            if symbol in forex_symbols:
+                # Use forex candle endpoint for commodities
+                finnhub_symbol = forex_symbols[symbol]
+                now = int(datetime.now().timestamp())
+                yesterday = now - 86400
+                url = f"https://finnhub.io/api/v1/forex/candle?symbol={finnhub_symbol}&resolution=D&from={yesterday}&to={now}&token={self.finnhub_key}"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if data.get('c') and len(data['c']) > 0:
+                                price = data['c'][-1]  # Latest close
+                                prev_close = data['c'][0] if len(data['c']) > 1 else price
+                                change = price - prev_close
+                                return StockQuote(
+                                    symbol=symbol,
+                                    price=price,
+                                    change=change,
+                                    change_percent=(change / prev_close * 100) if prev_close else 0,
+                                    volume=data.get('v', [0])[-1] if data.get('v') else 0,
+                                    high=data['h'][-1] if data.get('h') else price,
+                                    low=data['l'][-1] if data.get('l') else price,
+                                    open=data['o'][-1] if data.get('o') else price,
+                                    previous_close=prev_close,
+                                    timestamp=datetime.now()
+                                )
+            else:
+                # Regular stock quote
+                url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={self.finnhub_key}"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if data.get('c') and data['c'] > 0:
+                                return StockQuote(
+                                    symbol=symbol,
+                                    price=data['c'],
+                                    change=data['d'] or 0,
+                                    change_percent=data['dp'] or 0,
+                                    volume=0,
+                                    high=data['h'] or data['c'],
+                                    low=data['l'] or data['c'],
+                                    open=data['o'] or data['c'],
+                                    previous_close=data['pc'] or data['c'],
+                                    timestamp=datetime.now()
+                                )
         except Exception as e:
             logger.warning(f"Finnhub error for {symbol}: {e}")
         return None
