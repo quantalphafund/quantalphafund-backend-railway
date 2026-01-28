@@ -14,6 +14,22 @@ from .model_trainer import (
     BacktestResult,
 )
 
+# TensorFlow models (imported conditionally to handle missing dependencies)
+try:
+    from .tf_models import (
+        train_tf_models,
+        backtest_tf_models,
+        TFModelPrediction,
+        TFEnsembleTrainer,
+    )
+    TF_AVAILABLE = True
+except ImportError as e:
+    TF_AVAILABLE = False
+    train_tf_models = None
+    backtest_tf_models = None
+    TFModelPrediction = None
+    TFEnsembleTrainer = None
+
 __all__ = [
     'get_historical_prices',
     'get_training_data',
@@ -25,4 +41,9 @@ __all__ = [
     'get_trained_predictions',
     'ModelPrediction',
     'BacktestResult',
+    'train_tf_models',
+    'backtest_tf_models',
+    'TFModelPrediction',
+    'TFEnsembleTrainer',
+    'TF_AVAILABLE',
 ]

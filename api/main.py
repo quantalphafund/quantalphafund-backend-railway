@@ -42,7 +42,12 @@ from core.ml_training import (
     train_all_models,
     get_trained_predictions,
     HISTORICAL_DATA,
+    TF_AVAILABLE,
 )
+
+# Import TensorFlow models if available
+if TF_AVAILABLE:
+    from core.ml_training import train_tf_models, backtest_tf_models
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1938,6 +1943,118 @@ def interpret_backtest_accuracy(accuracy_score: float, direction_correct: bool) 
     direction_text = "correctly predicted direction" if direction_correct else "missed direction"
 
     return f"{quality} prediction accuracy ({accuracy_score:.1f}%), {direction_text}"
+
+
+# ============================================
+# TENSORFLOW ML MODELS API
+# ============================================
+
+@app.get("/api/tf/status")
+async def get_tensorflow_status():
+    """Check if TensorFlow is available"""
+    return {
+        'tensorflow_available': TF_AVAILABLE,
+        'message': 'TensorFlow models ready' if TF_AVAILABLE else 'TensorFlow not installed'
+    }
+
+
+@app.get("/api/tf/train/{symbol}")
+async def train_tensorflow_models(symbol: str):
+    """
+    Train TensorFlow models (LSTM, GRU, Dense, XGBoost) on 10 years of data.
+    Returns predictions with validation metrics.
+    """
+    if not TF_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="TensorFlow is not available. Install with: pip install tensorflow-cpu"
+        )
+
+    symbol = symbol.upper()
+
+    if symbol not in HISTORICAL_DATA:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No historical data for {symbol}. Available: {list(HISTORICAL_DATA.keys())}"
+        )
+
+    try:
+        predictions = train_tf_models(symbol)
+
+        if not predictions:
+            raise HTTPException(status_code=500, detail="Training failed")
+
+        return {
+            'symbol': symbol,
+            'status': 'trained',
+            'framework': 'TensorFlow 2.15',
+            'trainingData': '2015-2024 (10 years, 120 months)',
+            'features': [
+                'Returns (1m, 3m, 6m, 12m)',
+                'Volatility (3m, 6m, 12m)',
+                'MA Crossovers',
+                'RSI-like momentum',
+                'Price position',
+                'Trend strength'
+            ],
+            'models': {
+                name: {
+                    'prediction_1m': pred.prediction_1m,
+                    'prediction_3m': pred.prediction_3m,
+                    'prediction_6m': pred.prediction_6m,
+                    'prediction_12m': pred.prediction_12m,
+                    'confidence': pred.confidence,
+                    'validation_mae': pred.validation_mae,
+                    'validation_direction_accuracy': pred.validation_direction_accuracy,
+                }
+                for name, pred in predictions.items()
+            }
+        }
+    except Exception as e:
+        logger.error(f"TensorFlow training error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tf/backtest/{symbol}")
+async def backtest_tensorflow_models(symbol: str):
+    """
+    Train TensorFlow models and backtest against actual 2025 performance.
+    Shows predicted vs actual with accuracy metrics.
+    """
+    if not TF_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="TensorFlow is not available"
+        )
+
+    symbol = symbol.upper()
+
+    if symbol not in HISTORICAL_DATA:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No historical data for {symbol}"
+        )
+
+    try:
+        result = backtest_tf_models(symbol)
+
+        if 'error' in result:
+            raise HTTPException(status_code=500, detail=result['error'])
+
+        # Add interpretation
+        metrics = result.get('metrics', {})
+        result['interpretation'] = interpret_backtest_accuracy(
+            metrics.get('accuracyScore', 0),
+            metrics.get('directionCorrect', False)
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"TensorFlow backtest error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Startup event
