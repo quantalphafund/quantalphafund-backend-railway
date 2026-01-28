@@ -62,6 +62,12 @@ class MarketDataAPI:
 
     async def get_quote(self, symbol: str) -> Optional[StockQuote]:
         """Get real-time quote for a symbol"""
+        # Symbols that should ALWAYS use fallback (API returns wrong data)
+        force_fallback = {'TCS', 'VODAFONE', 'JAIPRAKASH', 'RPOWER', 'BYJU'}
+
+        if symbol in force_fallback:
+            return self._get_simulated_quote(symbol)
+
         # Check cache first
         if symbol in self._quote_cache:
             cached_quote, cached_time = self._quote_cache[symbol]
