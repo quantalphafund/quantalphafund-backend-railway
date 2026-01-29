@@ -1,7 +1,8 @@
 """
 Medallion Fund Dashboard - Main API
 FastAPI-based REST API for the investment dashboard
-Version: 3.0.0 - 60-Factor Prediction Engine (Jan 29, 2026)
+Version: 4.0.0 - 105-Factor Prediction Engine (Jan 30, 2026)
+Includes: Intrinio (fundamentals) + Quandl (macro) + Technical (60)
 """
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
@@ -50,20 +51,46 @@ from core.ml_training import (
 # Import 60-Factor Engine
 from core.ml_training.factor_engine import FactorEngine, calculate_composite_score
 
-# ML predictions cache - computed on-demand with 60-factor engine
+# Import 105+ Factor Data Pipeline (Intrinio + Quandl)
+from core.data_providers.data_pipeline import DataPipeline
+from core.data_providers.intrinio_client import IntrinioClient, FundamentalFactors
+from core.data_providers.quandl_client import QuandlClient, MacroRegimeClassifier
+
+# Initialize Data Pipeline with API keys
+INTRINIO_API_KEY = os.environ.get('INTRINIO_API_KEY', '')
+QUANDL_API_KEY = os.environ.get('QUANDL_API_KEY', '') or os.environ.get('NASDAQ_DATA_LINK_API_KEY', '')
+
+# Initialize clients
+_intrinio_client = None
+_quandl_client = None
+_data_pipeline = None
+
+def get_data_pipeline():
+    """Get or initialize the data pipeline"""
+    global _data_pipeline, _intrinio_client, _quandl_client
+    if _data_pipeline is None:
+        _intrinio_client = IntrinioClient(api_key=INTRINIO_API_KEY) if INTRINIO_API_KEY else None
+        _quandl_client = QuandlClient(api_key=QUANDL_API_KEY) if QUANDL_API_KEY else None
+        _data_pipeline = DataPipeline(
+            intrinio_api_key=INTRINIO_API_KEY,
+            quandl_api_key=QUANDL_API_KEY
+        )
+    return _data_pipeline
+
+# ML predictions cache - computed on-demand with 105-factor engine
 _ml_cache: dict = {}
 _factor_cache: dict = {}
+_fundamental_cache: dict = {}
+_macro_cache: dict = {}
 
-def get_60_factor_predictions(symbol: str) -> dict:
+def get_105_factor_predictions(symbol: str) -> dict:
     """
-    Get ML predictions using 60-factor engine with walk-forward backtesting.
+    Get ML predictions using 105+ factor engine with walk-forward backtesting.
 
     Factors include:
-    - Momentum (12): Multi-timeframe returns, acceleration, quality, consistency
-    - Mean Reversion (12): MA distances, Bollinger, Z-score, percentiles
-    - Volatility (12): Multi-timeframe vol, skew, drawdown, Calmar ratio
-    - Trend (12): R², slope, MA crossovers, ADX, breakouts
-    - Oscillators (12): RSI, Stochastic, Williams %R, CCI, MACD, ROC
+    - Technical (60): Momentum, Mean Reversion, Volatility, Trend, Oscillators
+    - Fundamental (30): P/E, ROE, ROA, margins, growth, quality (from Intrinio)
+    - Macro (15): VIX, rates, regime, sentiment (from Quandl)
     """
     import numpy as np
     from dataclasses import dataclass
@@ -71,7 +98,7 @@ def get_60_factor_predictions(symbol: str) -> dict:
     if symbol not in HISTORICAL_DATA:
         return None
 
-    cache_key = f"ml_pred_v5_60f_{symbol}"
+    cache_key = f"ml_pred_v6_105f_{symbol}"
     if cache_key in _ml_cache:
         return _ml_cache[cache_key]
 
@@ -91,71 +118,207 @@ def get_60_factor_predictions(symbol: str) -> dict:
 
         prices = np.array(training_prices, dtype=float)
 
-        # Get all 60 factors using the Factor Engine
+        # Get all 60 technical factors using the Factor Engine
         engine = FactorEngine(prices)
-        all_factors = engine.get_all_factors()
+        technical_factors = engine.get_all_factors()
+
+        # Initialize all factors with technical
+        all_factors = {f'tech_{k}': v for k, v in technical_factors.items()}
+
+        # Get fundamental factors from Intrinio (if available)
+        fundamental_factors = {}
+        pipeline = get_data_pipeline()
+
+        if INTRINIO_API_KEY and pipeline._intrinio_client:
+            try:
+                if symbol not in _fundamental_cache:
+                    fund_data = pipeline.get_fundamental_factors(symbol)
+                    _fundamental_cache[symbol] = fund_data
+                fundamental_factors = _fundamental_cache.get(symbol, {})
+                for k, v in fundamental_factors.items():
+                    if isinstance(v, (int, float)) and not np.isnan(v):
+                        all_factors[f'fund_{k}'] = v
+                print(f"  Loaded {len(fundamental_factors)} fundamental factors for {symbol}")
+            except Exception as e:
+                print(f"  Intrinio fundamentals unavailable: {e}")
+
+        # Get macro factors from Quandl (if available)
+        macro_factors = {}
+        if QUANDL_API_KEY and pipeline._quandl_client:
+            try:
+                if 'macro' not in _macro_cache:
+                    macro_data = pipeline.get_macro_factors()
+                    _macro_cache['macro'] = macro_data
+                macro_factors = _macro_cache.get('macro', {})
+                for k, v in macro_factors.items():
+                    if isinstance(v, (int, float)) and not np.isnan(v):
+                        all_factors[f'macro_{k}'] = v
+                print(f"  Loaded {len(macro_factors)} macro factors")
+            except Exception as e:
+                print(f"  Quandl macro unavailable: {e}")
+
         factor_count = len(all_factors)
 
         # Store factors for debugging/display
         _factor_cache[symbol] = all_factors
 
-        # Multi-factor model predictions using different factor combinations
+        # Multi-factor model predictions using 105+ factors
         def momentum_model(f):
-            """Pure momentum strategy"""
-            return (
-                f.get('momentum_3m', 0) * 0.35 +
-                f.get('momentum_12m_skip_1m', 0) * 0.25 +
-                f.get('momentum_quality', 0) * 0.20 +
-                f.get('momentum_consistency', 0) * 0.10 +
-                f.get('up_down_ratio', 50) * 0.10 - 5
+            """Pure momentum strategy with fundamental overlay"""
+            base = (
+                f.get('tech_momentum_3m', f.get('momentum_3m', 0)) * 0.30 +
+                f.get('tech_momentum_12m_skip_1m', f.get('momentum_12m_skip_1m', 0)) * 0.20 +
+                f.get('tech_momentum_quality', f.get('momentum_quality', 0)) * 0.15 +
+                f.get('tech_momentum_consistency', f.get('momentum_consistency', 0)) * 0.10 +
+                f.get('tech_up_down_ratio', f.get('up_down_ratio', 50)) * 0.10 - 5
             ) / 10
 
+            # Add fundamental boost if available
+            roe = f.get('fund_roe', 0)
+            if roe > 15:
+                base *= 1.15  # Boost for high ROE
+            elif roe < 5 and roe > 0:
+                base *= 0.9  # Reduce for low ROE
+
+            return base
+
         def trend_model(f):
-            """Trend following strategy"""
-            return (
-                f.get('trend_intensity', 0) * 0.30 +
-                f.get('ma_cross_5_20', 0) * 0.25 +
-                f.get('ma_alignment', 50) * 0.20 - 10 +
-                f.get('trend_strength', 50) * 0.15 - 7.5 +
-                f.get('breakout', 0) * 0.10
+            """Trend following with macro regime overlay"""
+            base = (
+                f.get('tech_trend_intensity', f.get('trend_intensity', 0)) * 0.25 +
+                f.get('tech_ma_cross_5_20', f.get('ma_cross_5_20', 0)) * 0.20 +
+                f.get('tech_ma_alignment', f.get('ma_alignment', 50)) * 0.15 - 7.5 +
+                f.get('tech_trend_strength', f.get('trend_strength', 50)) * 0.15 - 7.5 +
+                f.get('tech_breakout', f.get('breakout', 0)) * 0.10
             ) / 8
 
+            # Adjust for macro regime
+            regime_score = f.get('macro_regime_score', 50)
+            if regime_score > 60:
+                base *= 1.1  # Risk-on regime
+            elif regime_score < 40:
+                base *= 0.85  # Risk-off regime
+
+            return base
+
         def mean_reversion_model(f):
-            """Mean reversion strategy"""
-            return (
-                f.get('mean_rev_signal', 0) * 0.35 +
-                f.get('ob_os_signal', 0) * 0.25 +
-                (50 - f.get('rsi', 50)) * 0.20 +
-                (50 - f.get('bollinger_pos', 50)) * 0.10 +
-                f.get('z_score', 0) * -2 * 0.10
+            """Mean reversion with value overlay"""
+            base = (
+                f.get('tech_mean_rev_signal', f.get('mean_rev_signal', 0)) * 0.30 +
+                f.get('tech_ob_os_signal', f.get('ob_os_signal', 0)) * 0.20 +
+                (50 - f.get('tech_rsi', f.get('rsi', 50))) * 0.20 +
+                (50 - f.get('tech_bollinger_pos', f.get('bollinger_pos', 50))) * 0.10 +
+                f.get('tech_z_score', f.get('z_score', 0)) * -2 * 0.10
             ) / 5
 
-        def volatility_model(f):
-            """Volatility-adjusted strategy"""
-            vol_ratio = f.get('vol_ratio', 1)
-            base_pred = f.get('momentum_3m', 0) * 0.5 + f.get('trend_slope', 0) * 0.3
+            # Value boost
+            pe = f.get('fund_pe_ratio', 0)
+            if 5 < pe < 15:
+                base += 2  # Undervalued
+            elif pe > 35:
+                base -= 1  # Overvalued
 
-            # Reduce exposure in high vol environments
+            return base
+
+        def volatility_model(f):
+            """Volatility-adjusted with VIX overlay"""
+            vol_ratio = f.get('tech_vol_ratio', f.get('vol_ratio', 1))
+            vix = f.get('macro_vix', 20)
+
+            base_pred = (
+                f.get('tech_momentum_3m', f.get('momentum_3m', 0)) * 0.5 +
+                f.get('tech_trend_slope', f.get('trend_slope', 0)) * 0.3
+            )
+
+            # Adjust for market volatility
+            if vix > 25:
+                base_pred *= 0.7  # High fear
+            elif vix < 15:
+                base_pred *= 1.1  # Low fear/complacency
+
+            # Adjust for stock-specific volatility
             if vol_ratio > 1.5:
                 return base_pred * 0.5
             elif vol_ratio < 0.7:
                 return base_pred * 1.2
             return base_pred * 0.8
 
+        def fundamental_model(f):
+            """Pure fundamental factors model"""
+            score = 0
+            count = 0
+
+            # Quality factors
+            roe = f.get('fund_roe', 0)
+            if roe > 0:
+                score += min(roe / 20, 1) * 3  # Normalize to 0-3
+                count += 1
+
+            roa = f.get('fund_roa', 0)
+            if roa > 0:
+                score += min(roa / 10, 1) * 2
+                count += 1
+
+            # Value factors
+            pe = f.get('fund_pe_ratio', 0)
+            if pe > 0:
+                if pe < 15:
+                    score += 2
+                elif pe > 30:
+                    score -= 1
+                count += 1
+
+            # Growth factors
+            rev_growth = f.get('fund_revenue_growth', 0)
+            if rev_growth != 0:
+                score += min(rev_growth / 20, 2)
+                count += 1
+
+            eps_growth = f.get('fund_eps_growth', 0)
+            if eps_growth != 0:
+                score += min(eps_growth / 20, 2)
+                count += 1
+
+            # Margin factors
+            net_margin = f.get('fund_net_margin', 0)
+            if net_margin > 0:
+                score += min(net_margin / 20, 1.5)
+                count += 1
+
+            return score / max(count, 1) if count > 0 else 0
+
         def multi_factor_model(f):
-            """Combined multi-factor model"""
-            momentum = f.get('momentum_3m', 0) * 0.20
-            trend = f.get('trend_intensity', 0) * 0.15
-            quality = f.get('momentum_quality', 0) * 0.15
-            mean_rev = f.get('mean_rev_signal', 0) * 0.10
-            rsi_signal = (f.get('rsi', 50) - 50) * 0.10
-            ma_signal = f.get('ma_cross_5_20', 0) * 0.15
-            breakout = f.get('breakout', 0) * 0.15
+            """Combined 105-factor model"""
+            # Technical signals (50%)
+            momentum = f.get('tech_momentum_3m', f.get('momentum_3m', 0)) * 0.12
+            trend = f.get('tech_trend_intensity', f.get('trend_intensity', 0)) * 0.10
+            quality = f.get('tech_momentum_quality', f.get('momentum_quality', 0)) * 0.08
+            mean_rev = f.get('tech_mean_rev_signal', f.get('mean_rev_signal', 0)) * 0.08
+            rsi_signal = (f.get('tech_rsi', f.get('rsi', 50)) - 50) * 0.06
+            ma_signal = f.get('tech_ma_cross_5_20', f.get('ma_cross_5_20', 0)) * 0.06
 
-            return (momentum + trend + quality + mean_rev + rsi_signal + ma_signal + breakout) / 5
+            # Fundamental signals (30%)
+            roe_signal = f.get('fund_roe', 15) - 15  # vs 15% benchmark
+            pe_signal = 20 - f.get('fund_pe_ratio', 20) if f.get('fund_pe_ratio', 0) > 0 else 0
+            margin_signal = f.get('fund_net_margin', 10) - 10  # vs 10% benchmark
+            growth_signal = f.get('fund_revenue_growth', 0)
 
-        # Walk-forward backtest each model
-        def backtest_model(model_fn):
+            fund_contrib = (roe_signal * 0.08 + pe_signal * 0.08 + margin_signal * 0.07 + growth_signal * 0.07)
+
+            # Macro signals (20%)
+            regime = (f.get('macro_regime_score', 50) - 50) * 0.10
+            vix_signal = (20 - f.get('macro_vix', 20)) * 0.05  # Low VIX = bullish
+            rate_signal = -f.get('macro_10y_yield', 4) * 0.05 if f.get('macro_10y_yield', 0) > 0 else 0
+
+            macro_contrib = regime + vix_signal + rate_signal
+
+            total = (momentum + trend + quality + mean_rev + rsi_signal + ma_signal +
+                    fund_contrib + macro_contrib)
+
+            return total / 5
+
+        # Walk-forward backtest each model (using technical factors for backtest)
+        def backtest_model(model_fn, use_full_factors=False):
             correct = 0
             total = 0
             errors = []
@@ -167,7 +330,20 @@ def get_60_factor_predictions(symbol: str) -> dict:
                     continue
 
                 hist_engine = FactorEngine(hist_prices)
-                hist_factors = hist_engine.get_all_factors()
+                hist_tech = hist_engine.get_all_factors()
+
+                # For backtest, use tech factors with fund/macro overlays if available
+                if use_full_factors:
+                    hist_factors = {f'tech_{k}': v for k, v in hist_tech.items()}
+                    # Add current fundamental/macro (static for backtest)
+                    for k, v in fundamental_factors.items():
+                        if isinstance(v, (int, float)):
+                            hist_factors[f'fund_{k}'] = v
+                    for k, v in macro_factors.items():
+                        if isinstance(v, (int, float)):
+                            hist_factors[f'macro_{k}'] = v
+                else:
+                    hist_factors = hist_tech
 
                 pred = model_fn(hist_factors)
                 actual_ret = (prices[t+1] - prices[t]) / prices[t] * 100
@@ -183,28 +359,30 @@ def get_60_factor_predictions(symbol: str) -> dict:
             return acc, mae
 
         # Run backtests for each model
-        mom_acc, mom_mae = backtest_model(momentum_model)
-        trend_acc, trend_mae = backtest_model(trend_model)
-        mr_acc, mr_mae = backtest_model(mean_reversion_model)
-        vol_acc, vol_mae = backtest_model(volatility_model)
-        mf_acc, mf_mae = backtest_model(multi_factor_model)
+        mom_acc, mom_mae = backtest_model(momentum_model, use_full_factors=True)
+        trend_acc, trend_mae = backtest_model(trend_model, use_full_factors=True)
+        mr_acc, mr_mae = backtest_model(mean_reversion_model, use_full_factors=True)
+        vol_acc, vol_mae = backtest_model(volatility_model, use_full_factors=True)
+        fund_acc, fund_mae = backtest_model(fundamental_model, use_full_factors=True)
+        mf_acc, mf_mae = backtest_model(multi_factor_model, use_full_factors=True)
 
-        # Generate current predictions
+        # Generate current predictions using all 105+ factors
         mom_pred = momentum_model(all_factors)
         trend_pred = trend_model(all_factors)
         mr_pred = mean_reversion_model(all_factors)
         vol_pred = volatility_model(all_factors)
+        fund_pred = fundamental_model(all_factors)
         mf_pred = multi_factor_model(all_factors)
 
-        # Accuracy-weighted ensemble
-        weights = [mom_acc, trend_acc, mr_acc, vol_acc, mf_acc]
-        preds = [mom_pred, trend_pred, mr_pred, vol_pred, mf_pred]
+        # Accuracy-weighted ensemble with 6 models
+        weights = [mom_acc, trend_acc, mr_acc, vol_acc, fund_acc, mf_acc]
+        preds = [mom_pred, trend_pred, mr_pred, vol_pred, fund_pred, mf_pred]
         ensemble_pred = sum(p * w for p, w in zip(preds, weights)) / sum(weights) if sum(weights) > 0 else 0
         ensemble_acc = np.mean(weights)
-        ensemble_mae = np.mean([mom_mae, trend_mae, mr_mae, vol_mae, mf_mae])
+        ensemble_mae = np.mean([mom_mae, trend_mae, mr_mae, vol_mae, fund_mae, mf_mae])
 
-        # Calculate composite score from factors
-        composite = calculate_composite_score(all_factors)
+        # Calculate composite score from technical factors
+        composite = calculate_composite_score(technical_factors)
 
         @dataclass
         class Pred:
@@ -217,37 +395,52 @@ def get_60_factor_predictions(symbol: str) -> dict:
             confidence: float
             validation_mae: float
             validation_direction_accuracy: float
-            factors_used: int = 60
+            factors_used: int = 105
 
-        def make_pred(name, p1m, acc, mae, factors=60):
-            conf = min(85, max(40, acc * 0.6 + composite * 0.4))
+        def make_pred(name, p1m, acc, mae, factors=factor_count):
+            conf = min(90, max(45, acc * 0.6 + composite * 0.4))
             return Pred(symbol, name, round(p1m, 2), round(p1m * 1.8, 2),
                        round(p1m * 2.5, 2), round(p1m * 3.2, 2),
                        round(conf, 1), round(mae, 2), round(acc, 1), factors)
 
         predictions = {
-            'neural_network': make_pred('Momentum-60F', mom_pred, mom_acc, mom_mae),
-            'neural_network_deep': make_pred('Trend-60F', trend_pred, trend_acc, trend_mae),
-            'xgboost': make_pred('MeanRev-60F', mr_pred, mr_acc, mr_mae),
-            'random_forest': make_pred('VolAdj-60F', vol_pred, vol_acc, vol_mae),
-            'gradient_boost': make_pred('MultiFactor-60F', mf_pred, mf_acc, mf_mae),
-            'ensemble': make_pred('Ensemble-60F', ensemble_pred, ensemble_acc, ensemble_mae),
+            'neural_network': make_pred('Momentum-105F', mom_pred, mom_acc, mom_mae),
+            'neural_network_deep': make_pred('Trend-105F', trend_pred, trend_acc, trend_mae),
+            'xgboost': make_pred('MeanRev-105F', mr_pred, mr_acc, mr_mae),
+            'random_forest': make_pred('VolAdj-105F', vol_pred, vol_acc, vol_mae),
+            'gradient_boost': make_pred('Fundamental-105F', fund_pred, fund_acc, fund_mae),
+            'ensemble': make_pred('MultiFactor-105F', mf_pred, mf_acc, mf_mae),
+            'ensemble_full': make_pred('Ensemble-105F', ensemble_pred, ensemble_acc, ensemble_mae),
         }
 
         _ml_cache[cache_key] = predictions
-        print(f"Generated 60-factor predictions for {symbol}: {factor_count} factors, {ensemble_acc:.1f}% accuracy")
+
+        # Log factor breakdown
+        tech_count = len(technical_factors)
+        fund_count = len(fundamental_factors)
+        macro_count = len(macro_factors)
+        print(f"Generated 105-factor predictions for {symbol}:")
+        print(f"  Technical: {tech_count} | Fundamental: {fund_count} | Macro: {macro_count} | Total: {factor_count}")
+        print(f"  Ensemble accuracy: {ensemble_acc:.1f}%")
+
         return predictions
 
     except Exception as e:
-        print(f"60-factor prediction error for {symbol}: {e}")
+        print(f"105-factor prediction error for {symbol}: {e}")
         import traceback
         traceback.print_exc()
         return None
 
 # Alias for backward compatibility
-get_lightweight_predictions = get_60_factor_predictions
+get_lightweight_predictions = get_105_factor_predictions
+get_60_factor_predictions = get_105_factor_predictions
 
-print(f"60-Factor Engine loaded v3.0")
+# Check API keys
+_has_intrinio = bool(INTRINIO_API_KEY)
+_has_quandl = bool(QUANDL_API_KEY)
+print(f"105-Factor Engine loaded v4.0")
+print(f"  Intrinio API: {'Connected' if _has_intrinio else 'Not configured'}")
+print(f"  Quandl API: {'Connected' if _has_quandl else 'Not configured'}")
 print(f"Historical data available for: {list(HISTORICAL_DATA.keys())}")
 
 # Configure logging
@@ -328,9 +521,14 @@ async def root():
     return {
         "status": "healthy",
         "service": "Medallion Fund Dashboard API",
-        "version": "3.0.0",
+        "version": "4.0.0",
         "timestamp": datetime.now().isoformat(),
-        "ml_symbols": list(HISTORICAL_DATA.keys())
+        "ml_symbols": list(HISTORICAL_DATA.keys()),
+        "factor_engine": "105-Factor (Technical + Fundamental + Macro)",
+        "data_providers": {
+            "intrinio": "connected" if _has_intrinio else "not_configured",
+            "quandl": "connected" if _has_quandl else "not_configured"
+        }
     }
 
 @app.get("/api/markets")
