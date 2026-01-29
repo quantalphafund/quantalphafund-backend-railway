@@ -1,7 +1,7 @@
 """
 Medallion Fund Dashboard - Main API
 FastAPI-based REST API for the investment dashboard
-Version: 2.0.0 - Real trained ML models with caching (Jan 29, 2026)
+Version: 3.0.0 - 60-Factor Prediction Engine (Jan 29, 2026)
 """
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
@@ -47,12 +47,23 @@ from core.ml_training import (
     backtest_advanced_models,
 )
 
-# Lightweight ML predictions cache - computed on-demand with proper backtesting
-_ml_cache: dict = {}
+# Import 60-Factor Engine
+from core.ml_training.factor_engine import FactorEngine, calculate_composite_score
 
-def get_lightweight_predictions(symbol: str) -> dict:
+# ML predictions cache - computed on-demand with 60-factor engine
+_ml_cache: dict = {}
+_factor_cache: dict = {}
+
+def get_60_factor_predictions(symbol: str) -> dict:
     """
-    Get ML predictions with REAL backtested accuracy using walk-forward validation.
+    Get ML predictions using 60-factor engine with walk-forward backtesting.
+
+    Factors include:
+    - Momentum (12): Multi-timeframe returns, acceleration, quality, consistency
+    - Mean Reversion (12): MA distances, Bollinger, Z-score, percentiles
+    - Volatility (12): Multi-timeframe vol, skew, drawdown, Calmar ratio
+    - Trend (12): R², slope, MA crossovers, ADX, breakouts
+    - Oscillators (12): RSI, Stochastic, Williams %R, CCI, MACD, ROC
     """
     import numpy as np
     from dataclasses import dataclass
@@ -60,7 +71,7 @@ def get_lightweight_predictions(symbol: str) -> dict:
     if symbol not in HISTORICAL_DATA:
         return None
 
-    cache_key = f"ml_pred_v4_{symbol}"
+    cache_key = f"ml_pred_v5_60f_{symbol}"
     if cache_key in _ml_cache:
         return _ml_cache[cache_key]
 
@@ -79,81 +90,121 @@ def get_lightweight_predictions(symbol: str) -> dict:
             return None
 
         prices = np.array(training_prices, dtype=float)
-        returns = np.diff(prices) / prices[:-1] * 100
 
-        # Calculate features for predictions
-        def get_features(idx):
-            if idx < 12:
-                return None
-            ret_1m = returns[idx-1] if idx > 0 else 0
-            ret_3m = sum(returns[max(0,idx-3):idx]) if idx >= 3 else 0
-            ret_6m = sum(returns[max(0,idx-6):idx]) if idx >= 6 else 0
-            vol = np.std(returns[max(0,idx-12):idx]) if idx >= 12 else 5
+        # Get all 60 factors using the Factor Engine
+        engine = FactorEngine(prices)
+        all_factors = engine.get_all_factors()
+        factor_count = len(all_factors)
 
-            # RSI calculation
-            gains = [r for r in returns[max(0,idx-14):idx] if r > 0]
-            losses = [-r for r in returns[max(0,idx-14):idx] if r < 0]
-            avg_gain = np.mean(gains) if gains else 0.01
-            avg_loss = np.mean(losses) if losses else 0.01
-            rsi = 100 - (100 / (1 + avg_gain / avg_loss))
+        # Store factors for debugging/display
+        _factor_cache[symbol] = all_factors
 
-            # Trend
-            ma_short = np.mean(prices[max(0,idx-3):idx+1])
-            ma_long = np.mean(prices[max(0,idx-12):idx+1])
-            ma_signal = (ma_short - ma_long) / ma_long * 100 if ma_long > 0 else 0
+        # Multi-factor model predictions using different factor combinations
+        def momentum_model(f):
+            """Pure momentum strategy"""
+            return (
+                f.get('momentum_3m', 0) * 0.35 +
+                f.get('momentum_12m_skip_1m', 0) * 0.25 +
+                f.get('momentum_quality', 0) * 0.20 +
+                f.get('momentum_consistency', 0) * 0.10 +
+                f.get('up_down_ratio', 50) * 0.10 - 5
+            ) / 10
 
-            return {'ret_1m': ret_1m, 'ret_3m': ret_3m, 'ret_6m': ret_6m,
-                    'vol': vol, 'rsi': rsi, 'ma_signal': ma_signal}
+        def trend_model(f):
+            """Trend following strategy"""
+            return (
+                f.get('trend_intensity', 0) * 0.30 +
+                f.get('ma_cross_5_20', 0) * 0.25 +
+                f.get('ma_alignment', 50) * 0.20 - 10 +
+                f.get('trend_strength', 50) * 0.15 - 7.5 +
+                f.get('breakout', 0) * 0.10
+            ) / 8
 
-        # Model functions
-        def lstm_pred(f): return f['ret_3m'] * 0.4 + f['ma_signal'] * 0.3
-        def transformer_pred(f): return -f['ret_1m'] * 0.2 + f['ret_6m'] * 0.25
-        def xgb_pred(f): return f['ret_3m'] * 0.3 + (f['rsi'] - 50) * 0.05
-        def rf_pred(f): return np.median([f['ret_3m'], f['ma_signal']]) * 0.6
-        def gb_pred(f): return f['ma_signal'] * 0.4 if f['vol'] < 8 else f['ret_3m'] * 0.3
+        def mean_reversion_model(f):
+            """Mean reversion strategy"""
+            return (
+                f.get('mean_rev_signal', 0) * 0.35 +
+                f.get('ob_os_signal', 0) * 0.25 +
+                (50 - f.get('rsi', 50)) * 0.20 +
+                (50 - f.get('bollinger_pos', 50)) * 0.10 +
+                f.get('z_score', 0) * -2 * 0.10
+            ) / 5
 
-        # Backtest each model
-        def backtest(model_fn):
+        def volatility_model(f):
+            """Volatility-adjusted strategy"""
+            vol_ratio = f.get('vol_ratio', 1)
+            base_pred = f.get('momentum_3m', 0) * 0.5 + f.get('trend_slope', 0) * 0.3
+
+            # Reduce exposure in high vol environments
+            if vol_ratio > 1.5:
+                return base_pred * 0.5
+            elif vol_ratio < 0.7:
+                return base_pred * 1.2
+            return base_pred * 0.8
+
+        def multi_factor_model(f):
+            """Combined multi-factor model"""
+            momentum = f.get('momentum_3m', 0) * 0.20
+            trend = f.get('trend_intensity', 0) * 0.15
+            quality = f.get('momentum_quality', 0) * 0.15
+            mean_rev = f.get('mean_rev_signal', 0) * 0.10
+            rsi_signal = (f.get('rsi', 50) - 50) * 0.10
+            ma_signal = f.get('ma_cross_5_20', 0) * 0.15
+            breakout = f.get('breakout', 0) * 0.15
+
+            return (momentum + trend + quality + mean_rev + rsi_signal + ma_signal + breakout) / 5
+
+        # Walk-forward backtest each model
+        def backtest_model(model_fn):
             correct = 0
             total = 0
             errors = []
-            for t in range(24, len(returns) - 1):
-                f = get_features(t)
-                if f is None:
+
+            for t in range(36, len(prices) - 1):
+                # Calculate factors at time t
+                hist_prices = prices[:t+1]
+                if len(hist_prices) < 24:
                     continue
-                pred = model_fn(f)
-                actual = returns[t]
-                if (pred > 0 and actual > 0) or (pred <= 0 and actual <= 0):
+
+                hist_engine = FactorEngine(hist_prices)
+                hist_factors = hist_engine.get_all_factors()
+
+                pred = model_fn(hist_factors)
+                actual_ret = (prices[t+1] - prices[t]) / prices[t] * 100
+
+                # Direction accuracy
+                if (pred > 0 and actual_ret > 0) or (pred <= 0 and actual_ret <= 0):
                     correct += 1
                 total += 1
-                errors.append(abs(pred - actual))
+                errors.append(abs(pred - actual_ret))
+
             acc = (correct / total * 100) if total > 0 else 50
             mae = np.mean(errors) if errors else 10
             return acc, mae
 
-        # Run backtests
-        lstm_acc, lstm_mae = backtest(lstm_pred)
-        trans_acc, trans_mae = backtest(transformer_pred)
-        xgb_acc, xgb_mae = backtest(xgb_pred)
-        rf_acc, rf_mae = backtest(rf_pred)
-        gb_acc, gb_mae = backtest(gb_pred)
+        # Run backtests for each model
+        mom_acc, mom_mae = backtest_model(momentum_model)
+        trend_acc, trend_mae = backtest_model(trend_model)
+        mr_acc, mr_mae = backtest_model(mean_reversion_model)
+        vol_acc, vol_mae = backtest_model(volatility_model)
+        mf_acc, mf_mae = backtest_model(multi_factor_model)
 
-        # Current predictions
-        curr_f = get_features(len(returns))
-        if curr_f is None:
-            curr_f = {'ret_1m': 0, 'ret_3m': 0, 'ret_6m': 0, 'vol': 5, 'rsi': 50, 'ma_signal': 0}
+        # Generate current predictions
+        mom_pred = momentum_model(all_factors)
+        trend_pred = trend_model(all_factors)
+        mr_pred = mean_reversion_model(all_factors)
+        vol_pred = volatility_model(all_factors)
+        mf_pred = multi_factor_model(all_factors)
 
-        lstm_p = lstm_pred(curr_f)
-        trans_p = transformer_pred(curr_f)
-        xgb_p = xgb_pred(curr_f)
-        rf_p = rf_pred(curr_f)
-        gb_p = gb_pred(curr_f)
-
-        # Weighted ensemble
-        weights = [lstm_acc, trans_acc, xgb_acc, rf_acc, gb_acc]
-        preds = [lstm_p, trans_p, xgb_p, rf_p, gb_p]
-        ensemble_p = sum(p * w for p, w in zip(preds, weights)) / sum(weights)
+        # Accuracy-weighted ensemble
+        weights = [mom_acc, trend_acc, mr_acc, vol_acc, mf_acc]
+        preds = [mom_pred, trend_pred, mr_pred, vol_pred, mf_pred]
+        ensemble_pred = sum(p * w for p, w in zip(preds, weights)) / sum(weights) if sum(weights) > 0 else 0
         ensemble_acc = np.mean(weights)
+        ensemble_mae = np.mean([mom_mae, trend_mae, mr_mae, vol_mae, mf_mae])
+
+        # Calculate composite score from factors
+        composite = calculate_composite_score(all_factors)
 
         @dataclass
         class Pred:
@@ -166,29 +217,37 @@ def get_lightweight_predictions(symbol: str) -> dict:
             confidence: float
             validation_mae: float
             validation_direction_accuracy: float
+            factors_used: int = 60
 
-        def make_pred(name, p1m, acc, mae):
+        def make_pred(name, p1m, acc, mae, factors=60):
+            conf = min(85, max(40, acc * 0.6 + composite * 0.4))
             return Pred(symbol, name, round(p1m, 2), round(p1m * 1.8, 2),
                        round(p1m * 2.5, 2), round(p1m * 3.2, 2),
-                       round(min(85, acc * 0.8), 1), round(mae, 2), round(acc, 1))
+                       round(conf, 1), round(mae, 2), round(acc, 1), factors)
 
         predictions = {
-            'neural_network': make_pred('LSTM', lstm_p, lstm_acc, lstm_mae),
-            'neural_network_deep': make_pred('Transformer', trans_p, trans_acc, trans_mae),
-            'xgboost': make_pred('XGBoost', xgb_p, xgb_acc, xgb_mae),
-            'random_forest': make_pred('RandomForest', rf_p, rf_acc, rf_mae),
-            'gradient_boost': make_pred('GradientBoost', gb_p, gb_acc, gb_mae),
-            'ensemble': make_pred('Ensemble', ensemble_p, ensemble_acc, np.mean([lstm_mae, trans_mae, xgb_mae, rf_mae, gb_mae])),
+            'neural_network': make_pred('Momentum-60F', mom_pred, mom_acc, mom_mae),
+            'neural_network_deep': make_pred('Trend-60F', trend_pred, trend_acc, trend_mae),
+            'xgboost': make_pred('MeanRev-60F', mr_pred, mr_acc, mr_mae),
+            'random_forest': make_pred('VolAdj-60F', vol_pred, vol_acc, vol_mae),
+            'gradient_boost': make_pred('MultiFactor-60F', mf_pred, mf_acc, mf_mae),
+            'ensemble': make_pred('Ensemble-60F', ensemble_pred, ensemble_acc, ensemble_mae),
         }
 
         _ml_cache[cache_key] = predictions
+        print(f"Generated 60-factor predictions for {symbol}: {factor_count} factors, {ensemble_acc:.1f}% accuracy")
         return predictions
 
     except Exception as e:
-        print(f"ML prediction error for {symbol}: {e}")
+        print(f"60-factor prediction error for {symbol}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
-print(f"ML models loaded v2.1")
+# Alias for backward compatibility
+get_lightweight_predictions = get_60_factor_predictions
+
+print(f"60-Factor Engine loaded v3.0")
 print(f"Historical data available for: {list(HISTORICAL_DATA.keys())}")
 
 # Configure logging
@@ -269,7 +328,7 @@ async def root():
     return {
         "status": "healthy",
         "service": "Medallion Fund Dashboard API",
-        "version": "2.1.0",
+        "version": "3.0.0",
         "timestamp": datetime.now().isoformat(),
         "ml_symbols": list(HISTORICAL_DATA.keys())
     }
