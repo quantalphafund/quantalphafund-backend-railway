@@ -518,16 +518,24 @@ class ScreenerRequest(BaseModel):
 @app.get("/")
 async def root():
     """API Health Check"""
+    # Re-check env vars at runtime
+    intrinio_key = os.environ.get('INTRINIO_API_KEY', '')
+    quandl_key = os.environ.get('QUANDL_API_KEY', '') or os.environ.get('NASDAQ_DATA_LINK_API_KEY', '')
+
     return {
         "status": "healthy",
         "service": "Medallion Fund Dashboard API",
-        "version": "4.0.0",
+        "version": "4.0.1",
         "timestamp": datetime.now().isoformat(),
         "ml_symbols": list(HISTORICAL_DATA.keys()),
         "factor_engine": "105-Factor (Technical + Fundamental + Macro)",
         "data_providers": {
-            "intrinio": "connected" if _has_intrinio else "not_configured",
-            "quandl": "connected" if _has_quandl else "not_configured"
+            "intrinio": "connected" if intrinio_key else "not_configured",
+            "quandl": "connected" if quandl_key else "not_configured"
+        },
+        "env_debug": {
+            "intrinio_key_length": len(intrinio_key),
+            "quandl_key_length": len(quandl_key),
         }
     }
 
