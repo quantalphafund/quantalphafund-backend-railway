@@ -1351,11 +1351,17 @@ async def get_ml_signals(symbol: str):
 
         # Try to get real ML predictions if we have historical data
         ml_predictions = None
+        logger.info(f"Checking HISTORICAL_DATA for {symbol}: {symbol in HISTORICAL_DATA}")
+        logger.info(f"Available symbols: {list(HISTORICAL_DATA.keys())}")
         if symbol in HISTORICAL_DATA:
             try:
+                logger.info(f"Training models for {symbol}...")
                 ml_predictions = train_advanced_models(symbol)
+                logger.info(f"Training complete for {symbol}, got {len(ml_predictions) if ml_predictions else 0} models")
             except Exception as e:
-                logger.warning(f"Could not train ML models for {symbol}: {e}")
+                logger.error(f"Could not train ML models for {symbol}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
 
         if ml_predictions:
             # Use real trained model predictions
