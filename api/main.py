@@ -47,7 +47,11 @@ from core.ml_training import (
     backtest_advanced_models,
 )
 
+# Cache for ML predictions to avoid retraining on every request
+_ml_cache: dict = {}
+
 print(f"Advanced ML models loaded (Neural Network + XGBoost + Ensemble)")
+print(f"Historical data available for: {list(HISTORICAL_DATA.keys())}")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1351,17 +1355,20 @@ async def get_ml_signals(symbol: str):
 
         # Try to get real ML predictions if we have historical data
         ml_predictions = None
-        logger.info(f"Checking HISTORICAL_DATA for {symbol}: {symbol in HISTORICAL_DATA}")
-        logger.info(f"Available symbols: {list(HISTORICAL_DATA.keys())}")
-        if symbol in HISTORICAL_DATA:
+        has_historical = symbol in HISTORICAL_DATA
+
+        if has_historical:
             try:
-                logger.info(f"Training models for {symbol}...")
-                ml_predictions = train_advanced_models(symbol)
-                logger.info(f"Training complete for {symbol}, got {len(ml_predictions) if ml_predictions else 0} models")
+                # Use cached predictions if available, otherwise train
+                cache_key = f"ml_pred_{symbol}"
+                if cache_key in _ml_cache:
+                    ml_predictions = _ml_cache[cache_key]
+                else:
+                    ml_predictions = train_advanced_models(symbol)
+                    if ml_predictions:
+                        _ml_cache[cache_key] = ml_predictions
             except Exception as e:
-                logger.error(f"Could not train ML models for {symbol}: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
+                logger.error(f"ML training failed for {symbol}: {e}")
 
         if ml_predictions:
             # Use real trained model predictions
