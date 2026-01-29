@@ -1,7 +1,7 @@
 """
 Medallion Fund Dashboard - Main API
 FastAPI-based REST API for the investment dashboard
-Version: 1.2.0 - TensorFlow ML models (Jan 2026)
+Version: 2.0.0 - Real trained ML models with caching (Jan 29, 2026)
 """
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
@@ -131,8 +131,9 @@ async def root():
     return {
         "status": "healthy",
         "service": "Medallion Fund Dashboard API",
-        "version": "1.0.0",
-        "timestamp": datetime.now().isoformat()
+        "version": "2.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "ml_symbols": list(HISTORICAL_DATA.keys())
     }
 
 @app.get("/api/markets")
