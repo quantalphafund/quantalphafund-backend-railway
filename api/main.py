@@ -2092,30 +2092,30 @@ def interpret_beneish_m(score: float) -> str:
 async def get_ml_predictions(symbol: str):
     """
     Get ML model predictions for a symbol.
-    Uses real trained ML models (Neural Networks, XGBoost, Random Forest, Ensemble).
+    Uses 105-factor prediction engine with Intrinio (fundamentals) + Quandl (macro).
     Models trained on 2015-2024 data, backtested against 2025 actuals.
     """
     symbol = symbol.upper()
 
     # Check if we have historical data for this symbol
     if symbol in HISTORICAL_DATA:
-        # Use the new advanced ML models
+        # Use the new 105-factor engine
         try:
-            predictions = train_advanced_models(symbol)
+            predictions = get_105_factor_predictions(symbol)
 
             if predictions:
-                ensemble = predictions.get('ensemble')
-                nn = predictions.get('neural_network')
-                xgb = predictions.get('xgboost')
-                rf = predictions.get('random_forest')
+                ensemble = predictions.get('ensemble_full', predictions.get('ensemble'))
 
                 # Format for frontend compatibility
                 models_list = []
                 model_mapping = {
-                    'neural_network': 'LSTM',  # MLP acts like LSTM for time series
-                    'neural_network_deep': 'Transformer',  # Deep MLP
-                    'xgboost': 'XGBoost',
-                    'ensemble': 'Ensemble'
+                    'neural_network': 'Momentum-105F',
+                    'neural_network_deep': 'Trend-105F',
+                    'xgboost': 'MeanRev-105F',
+                    'random_forest': 'VolAdj-105F',
+                    'gradient_boost': 'Fundamental-105F',
+                    'ensemble': 'MultiFactor-105F',
+                    'ensemble_full': 'Ensemble-105F'
                 }
 
                 for name, pred in predictions.items():
@@ -2126,8 +2126,12 @@ async def get_ml_predictions(symbol: str):
                         'prediction_12m': pred.prediction_12m,
                         'confidence': pred.confidence,
                         'accuracy': pred.validation_direction_accuracy,
-                        'weight': 25 if name != 'ensemble' else 100,
+                        'factors_used': pred.factors_used,
+                        'weight': 25 if name not in ['ensemble', 'ensemble_full'] else 100,
                     })
+
+                # Get factor counts
+                factors_used = ensemble.factors_used if hasattr(ensemble, 'factors_used') else 105
 
                 return {
                     'symbol': symbol,
@@ -2135,9 +2139,15 @@ async def get_ml_predictions(symbol: str):
                     'available': True,
                     'trained': True,
                     'trainingData': '2015-2024 (10 years)',
+                    'factorEngine': '105-Factor (Technical + Fundamental + Macro)',
+                    'factorsUsed': factors_used,
+                    'dataProviders': {
+                        'intrinio': 'connected' if _has_intrinio else 'not_configured',
+                        'quandl': 'connected' if _has_quandl else 'not_configured'
+                    },
                     'ensemble': {
-                        'prediction1D': round(ensemble.prediction_1m / 20, 2),  # Scale to daily
-                        'prediction1W': round(ensemble.prediction_1m / 4, 2),   # Scale to weekly
+                        'prediction1D': round(ensemble.prediction_1m / 20, 2),
+                        'prediction1W': round(ensemble.prediction_1m / 4, 2),
                         'prediction1M': ensemble.prediction_1m,
                         'prediction6M': ensemble.prediction_6m,
                         'prediction12M': ensemble.prediction_12m,
