@@ -539,6 +539,35 @@ async def root():
         }
     }
 
+@app.get("/api/debug/factors/{symbol}")
+async def debug_factors(symbol: str):
+    """Debug endpoint to test 105-factor predictions"""
+    symbol = symbol.upper()
+    result = {
+        "symbol": symbol,
+        "in_historical_data": symbol in HISTORICAL_DATA,
+        "historical_symbols": list(HISTORICAL_DATA.keys()),
+        "_has_intrinio": _has_intrinio,
+        "_has_quandl": _has_quandl,
+        "intrinio_key_runtime": len(os.environ.get('INTRINIO_API_KEY', '')),
+        "quandl_key_runtime": len(os.environ.get('QUANDL_API_KEY', '') or os.environ.get('NASDAQ_DATA_LINK_API_KEY', '')),
+    }
+
+    if symbol in HISTORICAL_DATA:
+        try:
+            predictions = get_105_factor_predictions(symbol)
+            if predictions:
+                result["predictions_keys"] = list(predictions.keys())
+                result["success"] = True
+            else:
+                result["predictions"] = None
+                result["success"] = False
+        except Exception as e:
+            result["error"] = str(e)
+            result["success"] = False
+
+    return result
+
 @app.get("/api/markets")
 async def get_supported_markets():
     """Get list of supported markets"""
