@@ -129,7 +129,7 @@ def get_105_factor_predictions(symbol: str) -> dict:
         fundamental_factors = {}
         pipeline = get_data_pipeline()
 
-        if INTRINIO_API_KEY and pipeline._intrinio_client:
+        if INTRINIO_API_KEY and pipeline.intrinio:
             try:
                 if symbol not in _fundamental_cache:
                     fund_data = pipeline.get_fundamental_factors(symbol)
@@ -144,7 +144,7 @@ def get_105_factor_predictions(symbol: str) -> dict:
 
         # Get macro factors from Quandl (if available)
         macro_factors = {}
-        if QUANDL_API_KEY and pipeline._quandl_client:
+        if QUANDL_API_KEY and pipeline.quandl:
             try:
                 if 'macro' not in _macro_cache:
                     macro_data = pipeline.get_macro_factors()
