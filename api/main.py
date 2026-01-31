@@ -555,6 +555,11 @@ async def debug_factors(symbol: str):
 
     if symbol in HISTORICAL_DATA:
         try:
+            # Check historical data structure
+            prices_dict = HISTORICAL_DATA[symbol]
+            result["historical_data_years"] = list(prices_dict.keys())
+            result["training_prices_count"] = sum(len(prices_dict[y]) for y in prices_dict if y <= 2024)
+
             predictions = get_105_factor_predictions(symbol)
             if predictions:
                 result["predictions_keys"] = list(predictions.keys())
@@ -562,8 +567,11 @@ async def debug_factors(symbol: str):
             else:
                 result["predictions"] = None
                 result["success"] = False
+                result["reason"] = "get_105_factor_predictions returned None"
         except Exception as e:
+            import traceback
             result["error"] = str(e)
+            result["traceback"] = traceback.format_exc()
             result["success"] = False
 
     return result
