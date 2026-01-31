@@ -426,9 +426,13 @@ def get_105_factor_predictions(symbol: str) -> dict:
         return predictions
 
     except Exception as e:
-        print(f"105-factor prediction error for {symbol}: {e}")
         import traceback
-        traceback.print_exc()
+        error_msg = f"105-factor prediction error for {symbol}: {e}"
+        trace = traceback.format_exc()
+        print(error_msg)
+        print(trace)
+        # Store error for debugging
+        _ml_cache[f"error_{symbol}"] = {"error": str(e), "traceback": trace}
         return None
 
 # Alias for backward compatibility
@@ -568,6 +572,9 @@ async def debug_factors(symbol: str):
                 result["predictions"] = None
                 result["success"] = False
                 result["reason"] = "get_105_factor_predictions returned None"
+                # Check for stored error
+                if f"error_{symbol}" in _ml_cache:
+                    result["stored_error"] = _ml_cache[f"error_{symbol}"]
         except Exception as e:
             import traceback
             result["error"] = str(e)
